@@ -23,7 +23,7 @@ import os
 from argparse import ArgumentParser
 from argparse import RawDescriptionHelpFormatter
 
-from os import walk
+import json
 
 __all__ = []
 __version__ = 0.1
@@ -34,6 +34,8 @@ DEBUG = 0
 TESTRUN = 0
 PROFILE = 0
 
+default_chunk_size=10000000
+
 import_dir='./import'
 
 output_dir='./output/'
@@ -42,6 +44,11 @@ filename_suffix='.ixml.gz'
 
 export_result = 'export.csv.gz'
 
+fields_names={
+    'QUOTA':("QUOTANAME","QUOTAID","INITIALVALUE","BALANCE","CONSUMPTION","STATUS","LASTRESETDATETIME","NEXTRESETDATETIME","RESETTYPE","CYCLETYPE","CUSTOMLEVEL1","CUSTOMLEVEL2","CUSTOMLEVEL3","CUSTOMSTATUS","CUMULATEINDICATOR","PREUPLOAD","PREDOWNLOAD","PRECONSUMPTION", "QUOTAFLAG","UPDATEDTIME","QUOTAUNIT","CURCUMTIMES","ACCUMBVALUE")
+    ,'SUBSCRIPTION':("SERVICENAME","SERVICEID","STATUS","SUBSCRIBEDATETIME","VALIDFROMDATETIME","EXPIREDATETIME","ACTIVATIONSTATUS","SHAREFLAG","SVCPKGID","ROAMTYPE","SUBSCRIBEDTYPE","VALIDPERIOD","REDIRECTTIME","REDIRECTURLID","SRVSTATUS","FLAG","CONTACTMETHOD","USEDFLAG","SERVICEBILLINGTYPE","NOTIFICATIONCYCLE","ACTSTARTDATETIME","ACTENDDATETIME","RESTTIME","MILLISECOND")
+    ,'PKGSUBSCRIPTION':("PKGNAME","PKGID","SUBSCRIBEDATETIME","VALIDFROMDATETIME","EXPIREDATETIME","ROAMTYPE","CONTACTMETHOD")
+}
 
 class UPCC_Subscriber(object):
     def __init__(self,fname):
@@ -72,6 +79,7 @@ class UPCC_Subscriber(object):
                 if self.subscriber_begin:
                     (s_key,s_value) = (f_line_str.split('=')[0], f_line_str.split('=')[1])
 
+                    # list of attributes with multiple occurence
                     if s_key in ('SUBSCRIBERGRPNAME','SUBSCRIPTION','PKGSUBSCRIPTION','QUOTA','ACCOUNT'):
                         if s_key in self.attrs:
                             self.attrs[s_key].append(s_value)
@@ -80,13 +88,38 @@ class UPCC_Subscriber(object):
                     else:
                         self.attrs.update({s_key: s_value})
         
-        self.__unpack_quota__()        
+        # iterate over only those fields which are defined
+        for field in fields_names.keys():
+            # if field is defined in source and contain values (is not empty)
+            if field in self.attrs:
+                if len(self.attrs[field]) >0:
+                    self.__unpack_field__(field)        
         
         return
     
-    def __unpack_quota__(self):
-        pass
+    # transforms string representation like:
+    #     QUOTA=413102-DATA_D_Quota&E7242330DC433136&1024&0&0&6&20221031102855&FFFFFFFFFFFFFF&0&255&0&0&0&0&0&0&0&0&0&1667190535&1;
+    # into dict structure
+    def __unpack_field__(self,field):
+
+        for index,entity_string in enumerate(self.attrs[field]):
+            entity_fields = entity_string.split("&")
+            
+            # for case when number of fields parsed less than fields were defined
+            for i in range(0,len(fields_names[field])-len(entity_fields)):
+                entity_fields.append(None) 
+            
+            entity_dict = dict()
+            
+            # min function is safe here
+            entity_dict = {fields_names[field][i]: entity_fields[i] for i in range(0, min(len(entity_fields),len(fields_names[field])))}
+            
+            self.attrs[field][index] = entity_dict
+
         return
+    
+    def elements(self):
+        return len(self.attrs.keys())
 
 class CLIError(Exception):
     '''Generic exception to raise and log different fatal errors.'''
@@ -159,12 +192,14 @@ USAGE
         for inpath in paths:
             ### do something with inpath ###
             print("processing "+inpath)
-            
-#            input_files = [f for f in listdir(inpath) if isfile(join(mypath, f))]
-#            input_files = next(walk(inpath), (None, None, []))[2]
-            
-            for inp in next(walk(inpath), (None, None, []))[2]:
+                       
+            for inp in next(os.walk(inpath), (None, None, []))[2]:
+                print("loading: "+inp)
                 subs = UPCC_Subscriber (inpath+"/"+inp)
+                print("loaded elements: "+str(subs.elements()))
+                
+                if DEBUG:
+                    print (json.dumps(subs.attrs, indent=2, default=str))
             
         return 0
     except KeyboardInterrupt:
@@ -180,7 +215,7 @@ USAGE
 
 if __name__ == "__main__":
     if DEBUG:
-        sys.argv.append("-h")
+#        sys.argv.append("-h")
         sys.argv.append("-v")
         sys.argv.append("-r")
     if TESTRUN:
