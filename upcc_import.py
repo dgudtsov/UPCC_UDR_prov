@@ -1,4 +1,4 @@
-#!/usr/local/bin/python2.7
+#!/usr/local/bin/python3
 # encoding: utf-8
 '''
 upcc_import -- shortdesc
@@ -30,7 +30,7 @@ __version__ = 0.1
 __date__ = '2023-01-05'
 __updated__ = '2023-01-05'
 
-DEBUG = 0
+DEBUG = 1
 TESTRUN = 0
 PROFILE = 0
 
@@ -44,11 +44,19 @@ filename_suffix='.ixml.gz'
 
 export_result = 'export.csv.gz'
 
+#=== Constants
 fields_names={
     'QUOTA':("QUOTANAME","QUOTAID","INITIALVALUE","BALANCE","CONSUMPTION","STATUS","LASTRESETDATETIME","NEXTRESETDATETIME","RESETTYPE","CYCLETYPE","CUSTOMLEVEL1","CUSTOMLEVEL2","CUSTOMLEVEL3","CUSTOMSTATUS","CUMULATEINDICATOR","PREUPLOAD","PREDOWNLOAD","PRECONSUMPTION", "QUOTAFLAG","UPDATEDTIME","QUOTAUNIT","CURCUMTIMES","ACCUMBVALUE")
     ,'SUBSCRIPTION':("SERVICENAME","SERVICEID","STATUS","SUBSCRIBEDATETIME","VALIDFROMDATETIME","EXPIREDATETIME","ACTIVATIONSTATUS","SHAREFLAG","SVCPKGID","ROAMTYPE","SUBSCRIBEDTYPE","VALIDPERIOD","REDIRECTTIME","REDIRECTURLID","SRVSTATUS","FLAG","CONTACTMETHOD","USEDFLAG","SERVICEBILLINGTYPE","NOTIFICATIONCYCLE","ACTSTARTDATETIME","ACTENDDATETIME","RESTTIME","MILLISECOND")
     ,'PKGSUBSCRIPTION':("PKGNAME","PKGID","SUBSCRIBEDATETIME","VALIDFROMDATETIME","EXPIREDATETIME","ROAMTYPE","CONTACTMETHOD")
 }
+
+multi_fields = ('SUBSCRIBERGRPNAME','SUBSCRIPTION','PKGSUBSCRIPTION','QUOTA','ACCOUNT')
+
+tag_begin = "<SUBBEGIN"
+tag_end = "<SUBEND"
+
+#=== Code
 
 class UPCC_Subscriber(object):
     def __init__(self,fname):
@@ -62,11 +70,11 @@ class UPCC_Subscriber(object):
         with open(self.fname,'r') as f_inp:
             for f_line in f_inp:
                 
-                if "<SUBBEGIN" in f_line:
+                if tag_begin in f_line:
                     self.subscriber_begin=True
                     continue
                 
-                elif "<SUBEND" in f_line:
+                elif tag_end in f_line:
                     self.subscriber_begin=False
                     break
 
@@ -77,10 +85,11 @@ class UPCC_Subscriber(object):
                     print (f_line_str)
 
                 if self.subscriber_begin:
+                    # separator between attribute and its value
                     (s_key,s_value) = (f_line_str.split('=')[0], f_line_str.split('=')[1])
 
                     # list of attributes with multiple occurence
-                    if s_key in ('SUBSCRIBERGRPNAME','SUBSCRIPTION','PKGSUBSCRIPTION','QUOTA','ACCOUNT'):
+                    if s_key in multi_fields:
                         if s_key in self.attrs:
                             self.attrs[s_key].append(s_value)
                         else:
@@ -89,6 +98,7 @@ class UPCC_Subscriber(object):
                         self.attrs.update({s_key: s_value})
         
         # iterate over only those fields which are defined
+        # and automatically unpack complex attributes (quota, subscription, etc.)
         for field in fields_names.keys():
             # if field is defined in source and contain values (is not empty)
             if field in self.attrs:
@@ -103,6 +113,7 @@ class UPCC_Subscriber(object):
     def __unpack_field__(self,field):
 
         for index,entity_string in enumerate(self.attrs[field]):
+            # fields separator inside complex attributes (quota, subscription, etc.)
             entity_fields = entity_string.split("&")
             
             # for case when number of fields parsed less than fields were defined
@@ -118,6 +129,7 @@ class UPCC_Subscriber(object):
 
         return
     
+    # return number of records for attributes
     def elements(self):
         return len(self.attrs.keys())
 
@@ -198,7 +210,7 @@ USAGE
                 subs = UPCC_Subscriber (inpath+"/"+inp)
                 print("loaded elements: "+str(subs.elements()))
                 
-                if DEBUG:
+                if verbose>0:
                     print (json.dumps(subs.attrs, indent=2, default=str))
             
         return 0
