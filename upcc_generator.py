@@ -6,8 +6,8 @@ Created on 6 янв. 2023 г.
 
 import random
 
-IMSI_start = 401771000000000
-MSISDN_start = 77470000000
+IMSI_start = 401771000000001
+MSISDN_start = 77470000001
 
 subscribers_count = 100
 
@@ -156,8 +156,6 @@ if __name__ == '__main__':
     
     for i in range(0,subscribers_count):
         
-        print ("creating "+str(MSISDN_start+i))
-        
         with open(output_dir+"/"+str(MSISDN_start+i)+".txt",'w') as f_out:
         
             f_out.write(tag_begin)
@@ -175,11 +173,13 @@ if __name__ == '__main__':
                 
                 f_out.write (kvp)
             
-            for i in range(0,random.randrange(1,len(multi_fields))):
-#            for i in range(0,random.randrange(1,10)):                
-#                for j in range(0,random.randrange(1,len(multi_fields))):
-                f_out.write(multi_fields[random.randrange(1,len(multi_fields)-1)])
-                f_out.write("\n")
+            [ f_out.write(multi_fields[random.randrange(1,len(multi_fields)-1)]+"\n") for k in range(0,random.randrange(1,len(multi_fields))) ]
+            
+#            for k in range(0,random.randrange(1,len(multi_fields))):
+#                f_out.write(multi_fields[random.randrange(1,len(multi_fields)-1)])
+#                f_out.write("\n")
+            
+            print ("creating "+str(MSISDN_start+i)+", number of multi fields: "+str(k))
             
             f_out.write (tag_end)
     
