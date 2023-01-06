@@ -66,16 +66,17 @@ class UPCC_Subscriber(object):
         # the following attrs are used as list (even having single value):
         # 'SUBSCRIBERGRPNAME','SUBSCRIPTION','PKGSUBSCRIPTION','QUOTA','ACCOUNT'
         self.attrs=dict()
+        subscriber_begin=False
         
         with open(self.fname,'r') as f_inp:
             for f_line in f_inp:
                 
                 if tag_begin in f_line:
-                    self.subscriber_begin=True
+                    subscriber_begin=True
                     continue
                 
                 elif tag_end in f_line:
-                    self.subscriber_begin=False
+                    subscriber_begin=False
                     break
 
                 f_line_str = f_line.strip().rstrip(';')
@@ -84,7 +85,7 @@ class UPCC_Subscriber(object):
                     print (f_line)
                     print (f_line_str)
 
-                if self.subscriber_begin:
+                if subscriber_begin and len(f_line_str)>1:
                     # separator between attribute and its value
                     (s_key,s_value) = (f_line_str.split('=')[0], f_line_str.split('=')[1])
 
