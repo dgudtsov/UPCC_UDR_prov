@@ -25,7 +25,7 @@ from argparse import RawDescriptionHelpFormatter
 
 import json
 
-from upcc_import_template import xml_template,xml_custom
+from upcc_import_template import *
 
 __all__ = []
 __version__ = 0.1
@@ -160,33 +160,23 @@ class UPCC_Subscriber(object):
         self.profile=dict()
         
         # map base profile attrs
-        
         self.profile['MSISDN'] = self.attrs['MSISDN']
         self.profile['IMSI'] = self.attrs['SUBSCRIBERIDENTIFIER']
         
-#        for k in self.attrs:
-#            if "EXATTR" in k:
-#                cust = k.replace("EXATTR","Custom")
-#                self.profile[exattr2custom_mappings[k]] = self.attrs[k]
-        
+        # map exattr to custom by exattr2custom_mappings
         [ self.profile.update({exattr2custom_mappings[k]:self.attrs[k]}) for k in self.attrs if "EXATTR" in k ] 
         
         return
     
     def export(self,template):
         
-#        custom = dict(xml_custom)
-#        custom.update({'MSISDN': self.attrs['MSISDN'],
-#                         'IMSI': self.attrs['SUBSCRIBERIDENTIFIER']
-#                      }
-#                    )
-        
-#        xml_result = template.format( custom )
-        xml_result = template.format(MSISDN=self.profile['MSISDN'],
-                                      IMSI=self.profile['IMSI'] )
-
-#        xml_result = template.format(self.profile)
-
+        # generate xml set for custom fields
+        xml_custom_result=""
+        xml_custom_result="".join([xml_template_custom.format(Custom_Name=i,Custom_Value=self.profile[i]) for i in self.profile if 'Custom' in i])
+                
+        xml_result = template.format(MSISDN = self.profile['MSISDN'],
+                                      IMSI = self.profile['IMSI'],
+                                      CUSTOM = xml_custom_result )
         
         return xml_result
 

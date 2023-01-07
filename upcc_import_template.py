@@ -42,6 +42,8 @@ xml_custom = {
 # <field name=Custom15>{Custom15}</field>
 # <field name=Custom16>{Custom16}</field>
 
+xml_template_custom="<field name={Custom_Name}>{Custom_Value}</field>"
+
 xml_template_subs="""
 <txRequest id="1">
 <createSubscriber>
@@ -60,6 +62,7 @@ xml_template_subs="""
 <subscriber>
 <field name="MSISDN">{MSISDN}</field>
 <field name="IMSI">{IMSI}</field>
+{CUSTOM}
 </subscriber>
 ]]>
 </content>
