@@ -25,12 +25,14 @@ from argparse import RawDescriptionHelpFormatter
 
 import json
 
+from upcc_import_template import xml_template,xml_custom
+
 __all__ = []
 __version__ = 0.1
 __date__ = '2023-01-05'
 __updated__ = '2023-01-05'
 
-DEBUG = 1
+DEBUG = 0
 TESTRUN = 0
 PROFILE = 0
 
@@ -55,6 +57,25 @@ multi_fields = ('SUBSCRIBERGRPNAME','SUBSCRIPTION','PKGSUBSCRIPTION','QUOTA','AC
 
 tag_begin = "<SUBBEGIN"
 tag_end = "<SUBEND"
+
+exattr2custom_mappings = {
+'EXATTR1':'Custom1',
+'EXATTR2':'Custom2',
+'EXATTR3':'Custom3',
+'EXATTR4':'Custom4',
+'EXATTR5':'Custom5',
+'EXATTR6':'Custom6',
+'EXATTR7':'Custom7',
+'EXATTR8':'Custom8',
+'EXATTR9':'Custom9',
+'EXATTR10':'Custom10',
+'EXATTR11':'Custom11',
+'EXATTR12':'Custom12',
+'EXATTR13':'Custom13',
+'EXATTR14':'Custom14',
+'EXATTR15':'Custom15',
+'EXATTR16':'Custom16'
+    }
 
 #=== Code
 
@@ -133,6 +154,41 @@ class UPCC_Subscriber(object):
     # return number of records for attributes
     def elements(self):
         return len(self.attrs.keys())
+    
+    def mapping(self):
+        
+        self.profile=dict()
+        
+        # map base profile attrs
+        
+        self.profile['MSISDN'] = self.attrs['MSISDN']
+        self.profile['IMSI'] = self.attrs['SUBSCRIBERIDENTIFIER']
+        
+#        for k in self.attrs:
+#            if "EXATTR" in k:
+#                cust = k.replace("EXATTR","Custom")
+#                self.profile[exattr2custom_mappings[k]] = self.attrs[k]
+        
+        [ self.profile.update({exattr2custom_mappings[k]:self.attrs[k]}) for k in self.attrs if "EXATTR" in k ] 
+        
+        return
+    
+    def export(self,template):
+        
+#        custom = dict(xml_custom)
+#        custom.update({'MSISDN': self.attrs['MSISDN'],
+#                         'IMSI': self.attrs['SUBSCRIBERIDENTIFIER']
+#                      }
+#                    )
+        
+#        xml_result = template.format( custom )
+        xml_result = template.format(MSISDN=self.profile['MSISDN'],
+                                      IMSI=self.profile['IMSI'] )
+
+#        xml_result = template.format(self.profile)
+
+        
+        return xml_result
 
 class CLIError(Exception):
     '''Generic exception to raise and log different fatal errors.'''
@@ -213,7 +269,10 @@ USAGE
                 
                 if verbose>0:
                     print (json.dumps(subs.attrs, indent=2, default=str))
-            
+                
+                subs.mapping()
+                
+                print (subs.export(xml_template['create_subs']))
         return 0
     except KeyboardInterrupt:
         ### handle keyboard interrupt ###

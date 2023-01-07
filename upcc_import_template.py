@@ -24,6 +24,24 @@ xml_custom = {
     }
 
 # =CONCAT("<field name=";B1;">";"{";B1;"}";"</field>")
+
+# <field name=Custom1>{Custom1}</field>
+# <field name=Custom2>{Custom2}</field>
+# <field name=Custom3>{Custom3}</field>
+# <field name=Custom4>{Custom4}</field>
+# <field name=Custom5>{Custom5}</field>
+# <field name=Custom6>{Custom6}</field>
+# <field name=Custom7>{Custom7}</field>
+# <field name=Custom8>{Custom8}</field>
+# <field name=Custom9>{Custom9}</field>
+# <field name=Custom10>{Custom10}</field>
+# <field name=Custom11>{Custom11}</field>
+# <field name=Custom12>{Custom12}</field>
+# <field name=Custom13>{Custom13}</field>
+# <field name=Custom14>{Custom14}</field>
+# <field name=Custom15>{Custom15}</field>
+# <field name=Custom16>{Custom16}</field>
+
 xml_template_subs="""
 <txRequest id="1">
 <createSubscriber>
@@ -42,22 +60,6 @@ xml_template_subs="""
 <subscriber>
 <field name="MSISDN">{MSISDN}</field>
 <field name="IMSI">{IMSI}</field>
-<field name=Custom1>{Custom1}</field>
-<field name=Custom2>{Custom2}</field>
-<field name=Custom3>{Custom3}</field>
-<field name=Custom4>{Custom4}</field>
-<field name=Custom5>{Custom5}</field>
-<field name=Custom6>{Custom6}</field>
-<field name=Custom7>{Custom7}</field>
-<field name=Custom8>{Custom8}</field>
-<field name=Custom9>{Custom9}</field>
-<field name=Custom10>{Custom10}</field>
-<field name=Custom11>{Custom11}</field>
-<field name=Custom12>{Custom12}</field>
-<field name=Custom13>{Custom13}</field>
-<field name=Custom14>{Custom14}</field>
-<field name=Custom15>{Custom15}</field>
-<field name=Custom16>{Custom16}</field>
 </subscriber>
 ]]>
 </content>
