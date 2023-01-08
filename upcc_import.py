@@ -172,8 +172,8 @@ class UPCC_Subscriber(object):
         
         # generate xml set for custom fields
         xml_custom_result=""
-        xml_custom_result="".join([xml_template_custom.format(Custom_Name=i,Custom_Value=self.profile[i]) for i in self.profile if 'Custom' in i])
-                
+        xml_custom_result="".join([xml_template_custom.format(Custom_Name=attr,Custom_Value=self.profile[attr]) for attr in self.profile if 'Custom' in attr])
+        
         xml_result = template.format(MSISDN = self.profile['MSISDN'],
                                       IMSI = self.profile['IMSI'],
                                       CUSTOM = xml_custom_result )
