@@ -85,10 +85,11 @@ upcc2profile_mappings = {
 class UPCC_Subscriber(object):
     def __init__(self,fname):
         self.fname = fname
-        
+        '''
         # stores original UPCC fields in key-value pairs
         # the following attrs are used as list (even having single value):
         # 'SUBSCRIBERGRPNAME','SUBSCRIPTION','PKGSUBSCRIPTION','QUOTA','ACCOUNT'
+        '''
         self.attrs=dict()
         subscriber_begin=False
         
@@ -132,10 +133,12 @@ class UPCC_Subscriber(object):
         
         return
     
-    # transforms string representation like:
-    #     QUOTA=413102-DATA_D_Quota&E7242330DC433136&1024&0&0&6&20221031102855&FFFFFFFFFFFFFF&0&255&0&0&0&0&0&0&0&0&0&1667190535&1;
-    # into dict structure
     def __unpack_field__(self,field):
+        '''
+        # transforms string representation like:
+        #     QUOTA=413102-DATA_D_Quota&E7242330DC433136&1024&0&0&6&20221031102855&FFFFFFFFFFFFFF&0&255&0&0&0&0&0&0&0&0&0&1667190535&1;
+        # into dict structure
+        '''
 
         for index,entity_string in enumerate(self.attrs[field]):
             # fields separator inside complex attributes (quota, subscription, etc.)
@@ -159,15 +162,17 @@ class UPCC_Subscriber(object):
         return len(self.attrs.keys())
     
     def mapping(self):
+        '''
+        # internal structure:
+        # self.profile - dict, containing base profile attributes: MSISDN, IMSI, Ent, Tier, CustomX, etc.
+        # example: {'IMSI': '401771121496414', 'MSISDN': '77089675915', 'Custom3': '0', 'Custom6': '0', 'Custom7': '0', 'Custom8': '0'}
+        # self.quota - list of dicts, each dict contains: quota name and quota usage
+        # example: [{'QUOTA': '409239-DATA_D_Quota', 'USAGE': '65013247'}, {'QUOTA': '40777900081-DATA_D_Quota', 'USAGE': '865069'}, {'QUOTA': '413102-DATA_D_Quota', 'USAGE': '0'}]
+        '''
         
         self.profile=dict()
         
-        # map base profile attrs
-#        self.profile['MSISDN'] = self.attrs['MSISDN']
-#        self.profile['IMSI'] = self.attrs['SUBSCRIBERIDENTIFIER']
-        
-        # map exattr to custom by upcc2profile_mappings
-#        [ self.profile.update({upcc2profile_mappings[k]:self.attrs[k]}) for k in self.attrs if "EXATTR" in k ] 
+        # map all attributes were defined in upcc2profile_mappings
         [ self.profile.update({upcc2profile_mappings[k]:self.attrs[k]}) for k in self.attrs if k in upcc2profile_mappings ]
         
         # Quota mapping
@@ -177,9 +182,7 @@ class UPCC_Subscriber(object):
             
             for instance in self.attrs['QUOTA']:
                 
-                #instance['QUOTANAME']
-                #instance['CONSUMPTION']
-                
+                # define new dict and transfer there fields from self.attrs 
                 quota = dict()
                 quota['QUOTA'],quota['USAGE'] = instance['QUOTANAME'],instance['CONSUMPTION']
                 
@@ -188,6 +191,9 @@ class UPCC_Subscriber(object):
         return
     
     def export(self,template_profile,template_quota=None):
+        '''
+        Export mapped profile into xml using templates
+        '''
         
         # generate xml set for custom fields
         xml_custom_result=""
@@ -198,6 +204,7 @@ class UPCC_Subscriber(object):
                                       CUSTOM = xml_custom_result )
         
         xml_quota=""
+        # if template for quota is defined, then using it. If not then only base profile will be exported
         if template_quota is not None:
 
             # enumerate counter to start txRequest id from 2
