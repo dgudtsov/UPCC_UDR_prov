@@ -32,7 +32,7 @@ __version__ = 0.1
 __date__ = '2023-01-05'
 __updated__ = '2023-01-05'
 
-DEBUG = 0
+DEBUG = 1
 TESTRUN = 0
 PROFILE = 0
 
@@ -170,18 +170,47 @@ class UPCC_Subscriber(object):
 #        [ self.profile.update({upcc2profile_mappings[k]:self.attrs[k]}) for k in self.attrs if "EXATTR" in k ] 
         [ self.profile.update({upcc2profile_mappings[k]:self.attrs[k]}) for k in self.attrs if k in upcc2profile_mappings ]
         
+        # Quota mapping
+        if len(self.attrs['QUOTA'])>0 :
+            
+            self.quota = list()
+            
+            for instance in self.attrs['QUOTA']:
+                
+                #instance['QUOTANAME']
+                #instance['CONSUMPTION']
+                
+                quota = dict()
+                quota['QUOTA'],quota['USAGE'] = instance['QUOTANAME'],instance['CONSUMPTION']
+                
+                self.quota.append(quota)
+        
         return
     
-    def export(self,template):
+    def export(self,template_profile,template_quota=None):
         
         # generate xml set for custom fields
         xml_custom_result=""
         xml_custom_result="".join([xml_template_custom.format(Custom_Name=attr,Custom_Value=self.profile[attr]) for attr in self.profile if 'Custom' in attr])
         
-        xml_result = template.format(MSISDN = self.profile['MSISDN'],
+        xml_profile = template_profile.format(MSISDN = self.profile['MSISDN'],
                                       IMSI = self.profile['IMSI'],
                                       CUSTOM = xml_custom_result )
         
+        xml_quota=""
+        if template_quota is not None:
+
+            # enumerate counter to start txRequest id from 2
+            for i,quota in enumerate(self.quota, start=2):
+                xml_quota += template_quota.format(REQ = i,
+                                                  MSISDN = self.profile['MSISDN'],
+                                                  QUOTA = quota['QUOTA'],
+                                                  USAGE = quota['USAGE']
+                                                  )
+            
+        # concat profile with quota
+        xml_result = xml_profile + xml_quota
+    
         return xml_result
 
 class CLIError(Exception):
@@ -266,7 +295,8 @@ USAGE
                 
                 subs.mapping()
                 
-                print (subs.export(xml_template['create_subs']))
+                print (subs.export(xml_template['create_subs'],xml_template['create_quota']))
+#                print (subs.export(xml_template['create_subs']))
         return 0
     except KeyboardInterrupt:
         ### handle keyboard interrupt ###

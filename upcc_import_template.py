@@ -71,6 +71,34 @@ xml_template_subs="""
 </txRequest>
 """.replace("\n", "")
 
+xml_template_quota="""
+<txRequest id="{REQ}">
+<create createEntityIfNotExist="true">
+<key>
+<MSISDN>{MSISDN}</MSISDN>
+</key>
+<entity>
+<data>
+<name>Quota</name>
+<interface>XMLIMPORT</interface>
+<xpath/>
+</data>
+<content>
+<![CDATA[
+<usage>
+<version>3</version>
+<quota name="{QUOTA}">
+<totalVolume>{USAGE}</totalVolume>
+<Type>pass</Type>
+</quota>
+</usage>
+]]>
+</content>
+</entity>
+</create>
+</txRequest>
+""".replace("\n", "")
+
 # Delete subscribers
 xml_template_delete_subs="""
 <deleteSubscriber>
@@ -87,5 +115,6 @@ xml_template=dict()
 xml_template = {
     'delete' : xml_template_delete_subs
     ,'create_subs' : xml_template_subs
+    ,'create_quota' : xml_template_quota
     ,'replace_subs': xml_template_replace_subs
     }
