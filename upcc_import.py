@@ -58,7 +58,10 @@ multi_fields = ('SUBSCRIBERGRPNAME','SUBSCRIPTION','PKGSUBSCRIPTION','QUOTA','AC
 tag_begin = "<SUBBEGIN"
 tag_end = "<SUBEND"
 
-exattr2custom_mappings = {
+#define fields mapping from UPCC to UDR profile
+upcc2profile_mappings = {
+'MSISDN':'MSISDN',
+'SUBSCRIBERIDENTIFIER':'IMSI',
 'EXATTR1':'Custom1',
 'EXATTR2':'Custom2',
 'EXATTR3':'Custom3',
@@ -160,11 +163,12 @@ class UPCC_Subscriber(object):
         self.profile=dict()
         
         # map base profile attrs
-        self.profile['MSISDN'] = self.attrs['MSISDN']
-        self.profile['IMSI'] = self.attrs['SUBSCRIBERIDENTIFIER']
+#        self.profile['MSISDN'] = self.attrs['MSISDN']
+#        self.profile['IMSI'] = self.attrs['SUBSCRIBERIDENTIFIER']
         
-        # map exattr to custom by exattr2custom_mappings
-        [ self.profile.update({exattr2custom_mappings[k]:self.attrs[k]}) for k in self.attrs if "EXATTR" in k ] 
+        # map exattr to custom by upcc2profile_mappings
+#        [ self.profile.update({upcc2profile_mappings[k]:self.attrs[k]}) for k in self.attrs if "EXATTR" in k ] 
+        [ self.profile.update({upcc2profile_mappings[k]:self.attrs[k]}) for k in self.attrs if k in upcc2profile_mappings ]
         
         return
     
