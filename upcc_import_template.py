@@ -8,6 +8,10 @@ Created on 6 янв. 2023 г.
 
 xml_template_custom="<field name={Custom_Name}>{Custom_Value}</field>"
 
+xml_template_entitlement="""
+<field name="Entitlement">{Entitlement}</field>
+""".replace("\n", "")
+
 xml_template_subs="""
 <txRequest id="1">
 <createSubscriber>
@@ -27,6 +31,7 @@ xml_template_subs="""
 <field name="MSISDN">{MSISDN}</field>
 <field name="IMSI">{IMSI}</field>
 <field name="BillingDay">{BillingDay}</field>
+{ENTITLEMENT}
 {CUSTOM}
 </subscriber>
 ]]>
