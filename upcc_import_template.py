@@ -26,6 +26,7 @@ xml_template_subs="""
 <subscriber>
 <field name="MSISDN">{MSISDN}</field>
 <field name="IMSI">{IMSI}</field>
+<field name="BillingDay">{BillingDay}</field>
 {CUSTOM}
 </subscriber>
 ]]>

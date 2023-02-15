@@ -70,6 +70,9 @@ file_end="<ENDFILE>\n"
 upcc2profile_mappings = {
 'MSISDN':'MSISDN',
 'SUBSCRIBERIDENTIFIER':'IMSI',
+'STATION':'Custom20',
+'BILLINGCYCLEDAY':'BillingDay',
+
 'EXATTR1':'Custom1',
 'EXATTR2':'Custom2',
 'EXATTR3':'Custom3',
@@ -85,7 +88,8 @@ upcc2profile_mappings = {
 'EXATTR13':'Custom13',
 'EXATTR14':'Custom14',
 'EXATTR15':'Custom15',
-'EXATTR16':'Custom16'
+'EXATTR16':'Custom16',
+'EXATTR17':'Custom17',
     }
 
 #=== Code
@@ -184,6 +188,13 @@ class UPCC_Subscriber(object):
         # map all attributes were defined in upcc2profile_mappings
         [ self.profile.update({upcc2profile_mappings[k]:self.attrs[k]}) for k in self.attrs if k in upcc2profile_mappings ]
         
+        # BillingDay normalization
+        try:
+            if int(self.profile['BillingDay'])<0 or int(self.profile['BillingDay'])>31:  
+                self.profile['BillingDay'] = 0
+        except :
+            self.profile['BillingDay'] = 0
+        
         # Quota mapping
         if len(self.attrs['QUOTA'])>0 :
             
@@ -210,6 +221,7 @@ class UPCC_Subscriber(object):
         
         xml_profile = template_profile.format(MSISDN = self.profile['MSISDN'],
                                       IMSI = self.profile['IMSI'],
+                                      BillingDay = self.profile['BillingDay'],
                                       CUSTOM = xml_custom_result )
         
         xml_quota=""
