@@ -198,43 +198,46 @@ class UPCC_Subscriber(object):
 
         
         #PKGSUBSCRIPTION to SUBSCRIPTION mapping
-        if len(self.attrs['PKGSUBSCRIPTION'])>0 :
-            # for each package
-            for pkg in self.attrs['PKGSUBSCRIPTION']:
-                
-                # using pkgsubscription imported from upcc_pkgsubscription module
-                if pkg['PKGNAME'] in pkgsubscription:
-                    # get list of services assigned to package
-                    servicenames = pkgsubscription[pkg['PKGNAME']]
-                     
-                    # appending original SUBSCRIPTION list with synthetic values from package 
-                    for s in servicenames:
-                      self.attrs['SUBSCRIPTION'].append( dict(SERVICENAME=s) )  
+        if 'PKGSUBSCRIPTION' in self.attrs: 
+            if len(self.attrs['PKGSUBSCRIPTION'])>0 :
+                # for each package
+                for pkg in self.attrs['PKGSUBSCRIPTION']:
                     
-                else:
-                    print("Error: PKGSUBSCRIPTION is not found: "+pkg['PKGNAME'])
+                    # using pkgsubscription imported from upcc_pkgsubscription module
+                    if pkg['PKGNAME'] in pkgsubscription:
+                        # get list of services assigned to package
+                        servicenames = pkgsubscription[pkg['PKGNAME']]
+                         
+                        # appending original SUBSCRIPTION list with synthetic values from package 
+                        for s in servicenames:
+                          self.attrs['SUBSCRIPTION'].append( dict(SERVICENAME=s) )  
+                        
+                    else:
+                        print("Error: PKGSUBSCRIPTION is not found: "+pkg['PKGNAME'])
         
         # SUBSCRIPTION to Entitlement mapping
-        if len(self.attrs['SUBSCRIPTION'])>0 :
-            self.profile['Entitlement'] = list()
-            for subscription in self.attrs['SUBSCRIPTION']:
-                self.profile['Entitlement'].append(subscription['SERVICENAME'])
-        
-        # remove duplicated entitlements
-        self.profile['Entitlement'] = list(dict.fromkeys(self.profile['Entitlement']))
+        if 'SUBSCRIPTION' in self.attrs: 
+            if len(self.attrs['SUBSCRIPTION'])>0 :
+                self.profile['Entitlement'] = list()
+                for subscription in self.attrs['SUBSCRIPTION']:
+                    self.profile['Entitlement'].append(subscription['SERVICENAME'])
+            
+            # remove duplicated entitlements
+                self.profile['Entitlement'] = list(dict.fromkeys(self.profile['Entitlement']))
         
         # Quota mapping
-        if len(self.attrs['QUOTA'])>0 :
-            
-            self.quota = list()
-            
-            for instance in self.attrs['QUOTA']:
+        if 'QUOTA' in self.attrs:
+            if len(self.attrs['QUOTA'])>0 :
                 
-                # define new dict and transfer there fields from self.attrs 
-                quota = dict()
-                quota['QUOTA'],quota['USAGE'] = instance['QUOTANAME'],instance['CONSUMPTION']
+                self.quota = list()
                 
-                self.quota.append(quota)
+                for instance in self.attrs['QUOTA']:
+                    
+                    # define new dict and transfer there fields from self.attrs 
+                    quota = dict()
+                    quota['QUOTA'],quota['USAGE'] = instance['QUOTANAME'],instance['CONSUMPTION']
+                    
+                    self.quota.append(quota)
         
         return
     
@@ -247,8 +250,10 @@ class UPCC_Subscriber(object):
         xml_custom_result=""
         xml_custom_result="".join([xml_template_custom.format(Custom_Name=attr,Custom_Value=self.profile[attr]) for attr in self.profile if 'Custom' in attr])
         
+        # generate xml set for entitlements fields
         xml_ent_result=""
-        xml_ent_result="".join([xml_template_entitlement.format(Entitlement=ent) for ent in self.profile['Entitlement'] ])
+        if 'Entitlement' in self.profile:
+            xml_ent_result="".join([xml_template_entitlement.format(Entitlement=ent) for ent in self.profile['Entitlement'] ])
         
         xml_profile = template_profile.format(MSISDN = self.profile['MSISDN'],
                                       IMSI = self.profile['IMSI'],
@@ -383,8 +388,8 @@ USAGE
                                 
                                 # create new file on each chunk_size, starting from 0
                                 if export_records_count%default_chunk_size == 0:
-                                    print("new chunk on: ",export_records_count)
                                     timestamp = int(time.time()*timestamp_precision)
+                                    print("new chunk on: ",export_records_count," : ",filename_prefix+str(timestamp)+filename_suffix)
 
                                 export_records_count+=1                                    
 
@@ -406,7 +411,7 @@ USAGE
 #                            print("loaded elements: "+str(subs.elements()))
                     
 
-        print("total records: ",export_records_count)
+        print("Total records: ",export_records_count)
         return 0
     except KeyboardInterrupt:
         ### handle keyboard interrupt ###
