@@ -29,6 +29,7 @@ import json
 
 from upcc_import_template import *
 from upcc_pkgsubscription import pkgsubscription
+from upcc_servicequota import servicequota
 
 __all__ = []
 __version__ = 0.1
@@ -210,7 +211,7 @@ class UPCC_Subscriber(object):
                          
                         # appending original SUBSCRIPTION list with synthetic values from package 
                         for s in servicenames:
-                          self.attrs['SUBSCRIPTION'].append( dict(SERVICENAME=s) )  
+                            self.attrs['SUBSCRIPTION'].append( dict(SERVICENAME=s) )  
                         
                     else:
                         print("Error: PKGSUBSCRIPTION is not found: "+pkg['PKGNAME'])
@@ -220,7 +221,30 @@ class UPCC_Subscriber(object):
             if len(self.attrs['SUBSCRIPTION'])>0 :
                 self.profile['Entitlement'] = list()
                 for subscription in self.attrs['SUBSCRIPTION']:
+                    # mapping service to entitlement
                     self.profile['Entitlement'].append(subscription['SERVICENAME'])
+                    
+                    #mapping service to quota
+                    if subscription['SERVICENAME'] in servicequota:
+                        # get quota for service
+                        q = servicequota[subscription['SERVICENAME']]
+                        
+                        # check if quota is already assigned
+                        q_assign=False
+                        for instance in self.attrs['QUOTA']:
+                            if q==instance['QUOTANAME']:
+                                q_assign=True
+                                break
+                        
+                        if not q_assign:
+                            self.attrs['QUOTA'].append( dict(QUOTANAME=q,CONSUMPTION=0) )
+                            pass
+                        
+                        pass
+                    else:
+                        print("Error: SERVICENAME is not found in quota mapping: "+subscription['SERVICENAME'])
+
+                    
             
             # remove duplicated entitlements
                 self.profile['Entitlement'] = list(dict.fromkeys(self.profile['Entitlement']))
