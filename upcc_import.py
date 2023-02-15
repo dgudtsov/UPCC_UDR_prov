@@ -19,6 +19,8 @@ It defines classes_and_methods
 
 import sys
 import os
+import time
+import gzip
 
 from argparse import ArgumentParser
 from argparse import RawDescriptionHelpFormatter
@@ -32,11 +34,14 @@ __version__ = 0.1
 __date__ = '2023-01-05'
 __updated__ = '2023-01-05'
 
-DEBUG = 1
+DEBUG = 0
 TESTRUN = 0
 PROFILE = 0
 
-default_chunk_size=10000000
+timestamp_precision = 10000
+
+#default_chunk_size=10000000
+default_chunk_size=1000
 
 import_dir='./import'
 
@@ -57,6 +62,9 @@ multi_fields = ('SUBSCRIBERGRPNAME','SUBSCRIPTION','PKGSUBSCRIPTION','QUOTA','AC
 
 tag_begin = "<SUBBEGIN"
 tag_end = "<SUBEND"
+
+file_begin="<BEGINFILE>\n"
+file_end="<ENDFILE>\n"
 
 #define fields mapping from UPCC to UDR profile
 upcc2profile_mappings = {
@@ -83,34 +91,36 @@ upcc2profile_mappings = {
 #=== Code
 
 class UPCC_Subscriber(object):
-    def __init__(self,fname):
-        self.fname = fname
+    def __init__(self,rows_set):
+#        self.fname = fname
         '''
         # stores original UPCC fields in key-value pairs
         # the following attrs are used as list (even having single value):
         # 'SUBSCRIBERGRPNAME','SUBSCRIPTION','PKGSUBSCRIPTION','QUOTA','ACCOUNT'
         '''
         self.attrs=dict()
-        subscriber_begin=False
+#        subscriber_begin=False
         
-        with open(self.fname,'r') as f_inp:
-            for f_line in f_inp:
-                
-                if tag_begin in f_line:
-                    subscriber_begin=True
-                    continue
-                
-                elif tag_end in f_line:
-                    subscriber_begin=False
-                    break
-
+#        with open(self.fname,'r') as f_inp:
+        # if True:
+        #     for f_line in f_inp:
+        #
+        #         if tag_begin in f_line:
+        #             subscriber_begin=True
+        #             continue
+        #
+        #         elif tag_end in f_line:
+        #             subscriber_begin=False
+        #             break
+        for f_line in rows_set:
                 f_line_str = f_line.strip().rstrip(';')
                 
                 if DEBUG:
                     print (f_line)
                     print (f_line_str)
 
-                if subscriber_begin and len(f_line_str)>1:
+#                if subscriber_begin and len(f_line_str)>1:
+                if len(f_line_str)>1:
                     # separator between attribute and its value
                     (s_key,s_value) = (f_line_str.split('=')[0], f_line_str.split('=')[1])
 
@@ -122,7 +132,6 @@ class UPCC_Subscriber(object):
                             self.attrs.update({s_key: [s_value]})
                     else:
                         self.attrs.update({s_key: s_value})
-        
         # iterate over only those fields which are defined
         # and automatically unpack complex attributes (quota, subscription, etc.)
         for field in fields_names.keys():
@@ -286,22 +295,74 @@ USAGE
         if inpat and expat and inpat == expat:
             raise CLIError("include and exclude pattern are equal! Nothing will be processed.")
 
+        export_records_count = 0
+        
         for inpath in paths:
             ### do something with inpath ###
             print("processing "+inpath)
                        
             for inp in next(os.walk(inpath), (None, None, []))[2]:
+                
                 print("loading: "+inp)
-                subs = UPCC_Subscriber (inpath+"/"+inp)
-                print("loaded elements: "+str(subs.elements()))
                 
-                if verbose>0:
-                    print (json.dumps(subs.attrs, indent=2, default=str))
+                with gzip.open(inpath+"/"+inp, 'rt') as f_inp:
+                    while True:
+                        
+                        f_line = f_inp.readline()
+                        
+                        if not f_line:
+                            break
                 
-                subs.mapping()
-                
-                print (subs.export(xml_template['create_subs'],xml_template['create_quota']))
-#                print (subs.export(xml_template['create_subs']))
+                        if file_begin in f_line:
+                            f_begin=True
+                            continue
+                        
+                        elif file_end in f_line:
+                            f_begin=False
+                            break
+                        
+                        elif tag_begin in f_line:
+                        # prepare for the new subscriber record
+                            subscriber_begin=True
+                            subscriber_rows=[]
+                            continue
+                    
+                        elif tag_end in f_line:
+                        # once subscriber record is ended, flushing it into object
+                            if f_begin and subscriber_begin:
+                                
+                                subs = UPCC_Subscriber (subscriber_rows)
+                                if verbose>0:
+                                    print (json.dumps(subs.attrs, indent=2, default=str))
+                    
+                                subs.mapping()
+                                
+                                # create new file on each chunk_size, starting from 0
+                                if export_records_count%default_chunk_size == 0:
+                                    print("new chunk on: ",export_records_count)
+                                    timestamp = int(time.time()*timestamp_precision)
+
+                                export_records_count+=1                                    
+
+                                xml_result =subs.export(xml_template['create_subs'],xml_template['create_quota'])
+                                if verbose>0: 
+                                    print (xml_result)
+    #                           print (subs.export(xml_template['create_subs']))
+                                
+                                with gzip.open(output_dir+filename_prefix+str(timestamp)+filename_suffix, 'at') as f_out:
+                                    f_out.write("%s\n" % xml_result)
+    
+    
+                            subscriber_begin=False
+                        else:
+                            
+                        # accumulating rows into list
+                            subscriber_rows.append(f_line)
+                    
+#                            print("loaded elements: "+str(subs.elements()))
+                    
+
+        print("total records: ",export_records_count)
         return 0
     except KeyboardInterrupt:
         ### handle keyboard interrupt ###
