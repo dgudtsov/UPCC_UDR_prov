@@ -229,24 +229,21 @@ class UPCC_Subscriber(object):
                     #mapping service to quota
                     if subscription['SERVICENAME'] in servicequota:
                         # get quota for service
-                        q = servicequota[subscription['SERVICENAME']]
+#                        q = servicequota[subscription['SERVICENAME']]
+                        quotas = servicequota[subscription['SERVICENAME']]
                         
-                        # check if quota is already assigned
-                        q_assign=False
-                        for instance in self.attrs['QUOTA']:
-                            if q==instance['QUOTANAME']:
-                                q_assign=True
-                                break
-                        
-                        if not q_assign:
-                            self.attrs['QUOTA'].append( dict(QUOTANAME=q,CONSUMPTION=0) )
-                            pass
-                        
-                        pass
-                    else:
-                        #print("Error: SERVICENAME is not found in quota mapping: "+subscription['SERVICENAME'])
-                        pass
-
+                        for q in quotas: 
+                            # check if quota is already assigned
+                            q_assign=False
+                            for instance in self.attrs['QUOTA']:
+                                if q==instance['QUOTANAME']:
+                                    q_assign=True
+                                    break
+                            
+                            if not q_assign:
+                                self.attrs['QUOTA'].append( dict(QUOTANAME=q,CONSUMPTION=0) )
+#                    else:
+#                        print("Error: SERVICENAME is not found in quota mapping: "+subscription['SERVICENAME'])
                     
             
             # remove duplicated entitlements
