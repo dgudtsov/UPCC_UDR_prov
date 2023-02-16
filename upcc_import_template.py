@@ -12,6 +12,9 @@ xml_template_entitlement="""
 <field name="Entitlement">{Entitlement}</field>
 """.replace("\n", "")
 
+xml_template_begin_transact="<transaction>"
+xml_template_end_transact="</transaction>"
+
 xml_template_subs="""
 <txRequest id="1">
 <createSubscriber>

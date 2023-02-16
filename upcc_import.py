@@ -73,6 +73,7 @@ upcc2profile_mappings = {
 'MSISDN':'MSISDN',
 'SUBSCRIBERIDENTIFIER':'IMSI',
 'STATION':'Custom20',
+'USRMASTERIDENTIFIER':'Custom20',
 'BILLINGCYCLEDAY':'BillingDay',
 
 'EXATTR1':'Custom1',
@@ -105,6 +106,7 @@ class UPCC_Subscriber(object):
         # 'SUBSCRIBERGRPNAME','SUBSCRIPTION','PKGSUBSCRIPTION','QUOTA','ACCOUNT'
         '''
         self.attrs=dict()
+        self.quota = list()
 #        subscriber_begin=False
         
 #        with open(self.fname,'r') as f_inp:
@@ -242,7 +244,8 @@ class UPCC_Subscriber(object):
                         
                         pass
                     else:
-                        print("Error: SERVICENAME is not found in quota mapping: "+subscription['SERVICENAME'])
+                        #print("Error: SERVICENAME is not found in quota mapping: "+subscription['SERVICENAME'])
+                        pass
 
                     
             
@@ -252,9 +255,7 @@ class UPCC_Subscriber(object):
         # Quota mapping
         if 'QUOTA' in self.attrs:
             if len(self.attrs['QUOTA'])>0 :
-                
-                self.quota = list()
-                
+                                              
                 for instance in self.attrs['QUOTA']:
                     
                     # define new dict and transfer there fields from self.attrs 
@@ -287,7 +288,7 @@ class UPCC_Subscriber(object):
         
         xml_quota=""
         # if template for quota is defined, then using it. If not then only base profile will be exported
-        if template_quota is not None:
+        if template_quota is not None and len(self.quota)>0:
 
             # enumerate counter to start txRequest id from 2
             for i,quota in enumerate(self.quota, start=2):
@@ -296,6 +297,9 @@ class UPCC_Subscriber(object):
                                                   QUOTA = quota['QUOTA'],
                                                   USAGE = quota['USAGE']
                                                   )
+            # if quota, then construct transaction
+            xml_profile = xml_template_begin_transact + xml_profile
+            xml_quota = xml_quota + xml_template_end_transact 
             
         # concat profile with quota
         return xml_profile + xml_quota
