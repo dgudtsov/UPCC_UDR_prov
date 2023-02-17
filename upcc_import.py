@@ -62,8 +62,6 @@ fields_names={
 
 multi_fields = ('SUBSCRIBERGRPNAME','SUBSCRIPTION','PKGSUBSCRIPTION','QUOTA','ACCOUNT')
 
-SRVSTATUS_Frozen = 1
-
 tag_begin = "<SUBBEGIN"
 tag_end = "<SUBEND"
 
@@ -97,9 +95,10 @@ upcc2profile_mappings = {
 'EXATTR17':'Custom17',
     }
 
+SRVSTATUS_Frozen = 1
 upcc_SUBSCRIPTION_mapping = {
     'SERVICENAME' : 'Entitlement',
-    'SRVSTATUS' : 'Custom18'
+    'SRVSTATUS_Frozen' : 'Custom18'
     }
 #=== Code
 
@@ -237,7 +236,7 @@ class UPCC_Subscriber(object):
                 self.profile[upcc_SUBSCRIPTION_mapping['SERVICENAME']] = list()
                 
                 # Custom18
-                self.profile[upcc_SUBSCRIPTION_mapping['SRVSTATUS']] = list()
+                self.profile[upcc_SUBSCRIPTION_mapping['SRVSTATUS_Frozen']] = list()
                 
                 for subscription in self.attrs['SUBSCRIPTION']:
                     # mapping service to entitlement
@@ -247,7 +246,7 @@ class UPCC_Subscriber(object):
                     if 'SRVSTATUS' in subscription:
                         if subscription['SRVSTATUS'] == SRVSTATUS_Frozen:
 #                            print ("frozen: " + self.profile['IMSI'] )
-                            self.profile[upcc_SUBSCRIPTION_mapping['SRVSTATUS']].append(subscription['SERVICENAME'])
+                            self.profile[upcc_SUBSCRIPTION_mapping['SRVSTATUS_Frozen']].append(subscription['SERVICENAME'])
                     
                     #mapping service to quota
                     if subscription['SERVICENAME'] in servicequota:
@@ -272,14 +271,14 @@ class UPCC_Subscriber(object):
             # remove duplicated entitlements
                 self.profile[upcc_SUBSCRIPTION_mapping['SERVICENAME']] = list(dict.fromkeys(self.profile[upcc_SUBSCRIPTION_mapping['SERVICENAME']]))
             # remove duplicated frozen servises                
-                self.profile[upcc_SUBSCRIPTION_mapping['SRVSTATUS']] = list(dict.fromkeys(self.profile[upcc_SUBSCRIPTION_mapping['SRVSTATUS']]))
+                self.profile[upcc_SUBSCRIPTION_mapping['SRVSTATUS_Frozen']] = list(dict.fromkeys(self.profile[upcc_SUBSCRIPTION_mapping['SRVSTATUS_Frozen']]))
             
             # map list into string
-                if len(self.profile[upcc_SUBSCRIPTION_mapping['SRVSTATUS']])>0:
-                    self.profile[upcc_SUBSCRIPTION_mapping['SRVSTATUS']] = ';'.join(self.profile[upcc_SUBSCRIPTION_mapping['SRVSTATUS']])
+                if len(self.profile[upcc_SUBSCRIPTION_mapping['SRVSTATUS_Frozen']])>0:
+                    self.profile[upcc_SUBSCRIPTION_mapping['SRVSTATUS_Frozen']] = ';'.join(self.profile[upcc_SUBSCRIPTION_mapping['SRVSTATUS_Frozen']])
                 else:
                 #remove key
-                    del self.profile[upcc_SUBSCRIPTION_mapping['SRVSTATUS']]   
+                    del self.profile[upcc_SUBSCRIPTION_mapping['SRVSTATUS_Frozen']]   
                 
         
         # Quota mapping
