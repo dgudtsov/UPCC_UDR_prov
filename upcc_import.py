@@ -62,6 +62,8 @@ fields_names={
 
 multi_fields = ('SUBSCRIBERGRPNAME','SUBSCRIPTION','PKGSUBSCRIPTION','QUOTA','ACCOUNT')
 
+SRVSTATUS_Frozen = 1
+
 tag_begin = "<SUBBEGIN"
 tag_end = "<SUBEND"
 
@@ -95,6 +97,10 @@ upcc2profile_mappings = {
 'EXATTR17':'Custom17',
     }
 
+upcc_SUBSCRIPTION_mapping = {
+    'SERVICENAME' : 'Entitlement',
+    'SRVSTATUS' : 'Custom18'
+    }
 #=== Code
 
 class UPCC_Subscriber(object):
@@ -105,8 +111,15 @@ class UPCC_Subscriber(object):
         # the following attrs are used as list (even having single value):
         # 'SUBSCRIBERGRPNAME','SUBSCRIPTION','PKGSUBSCRIPTION','QUOTA','ACCOUNT'
         '''
+# stores source attributes from UPCC
         self.attrs=dict()
+
+# stores mapped quota parameters         
         self.quota = list()
+
+# stores mapped udr profile
+        self.profile=dict()
+
 #        subscriber_begin=False
         
 #        with open(self.fname,'r') as f_inp:
@@ -187,8 +200,6 @@ class UPCC_Subscriber(object):
         # example: [{'QUOTA': '409239-DATA_D_Quota', 'USAGE': '65013247'}, {'QUOTA': '40777900081-DATA_D_Quota', 'USAGE': '865069'}, {'QUOTA': '413102-DATA_D_Quota', 'USAGE': '0'}]
         '''
         
-        self.profile=dict()
-        
         # map all attributes were defined in upcc2profile_mappings
         [ self.profile.update({upcc2profile_mappings[k]:self.attrs[k]}) for k in self.attrs if k in upcc2profile_mappings ]
         
@@ -221,10 +232,22 @@ class UPCC_Subscriber(object):
         # SUBSCRIPTION to Entitlement mapping
         if 'SUBSCRIPTION' in self.attrs: 
             if len(self.attrs['SUBSCRIPTION'])>0 :
-                self.profile['Entitlement'] = list()
+                
+                # Entitlement
+                self.profile[upcc_SUBSCRIPTION_mapping['SERVICENAME']] = list()
+                
+                # Custom18
+                self.profile[upcc_SUBSCRIPTION_mapping['SRVSTATUS']] = list()
+                
                 for subscription in self.attrs['SUBSCRIPTION']:
                     # mapping service to entitlement
-                    self.profile['Entitlement'].append(subscription['SERVICENAME'])
+                    self.profile[upcc_SUBSCRIPTION_mapping['SERVICENAME']].append(subscription['SERVICENAME'])
+                    
+                    #SRVSTATUS = 1 (Frozen)
+                    if 'SRVSTATUS' in subscription:
+                        if subscription['SRVSTATUS'] == SRVSTATUS_Frozen:
+#                            print ("frozen: " + self.profile['IMSI'] )
+                            self.profile[upcc_SUBSCRIPTION_mapping['SRVSTATUS']].append(subscription['SERVICENAME'])
                     
                     #mapping service to quota
                     if subscription['SERVICENAME'] in servicequota:
@@ -247,7 +270,17 @@ class UPCC_Subscriber(object):
                     
             
             # remove duplicated entitlements
-                self.profile['Entitlement'] = list(dict.fromkeys(self.profile['Entitlement']))
+                self.profile[upcc_SUBSCRIPTION_mapping['SERVICENAME']] = list(dict.fromkeys(self.profile[upcc_SUBSCRIPTION_mapping['SERVICENAME']]))
+            # remove duplicated frozen servises                
+                self.profile[upcc_SUBSCRIPTION_mapping['SRVSTATUS']] = list(dict.fromkeys(self.profile[upcc_SUBSCRIPTION_mapping['SRVSTATUS']]))
+            
+            # map list into string
+                if len(self.profile[upcc_SUBSCRIPTION_mapping['SRVSTATUS']])>0:
+                    self.profile[upcc_SUBSCRIPTION_mapping['SRVSTATUS']] = ';'.join(self.profile[upcc_SUBSCRIPTION_mapping['SRVSTATUS']])
+                else:
+                #remove key
+                    del self.profile[upcc_SUBSCRIPTION_mapping['SRVSTATUS']]   
+                
         
         # Quota mapping
         if 'QUOTA' in self.attrs:
@@ -274,8 +307,8 @@ class UPCC_Subscriber(object):
         
         # generate xml set for entitlements fields
         xml_ent_result=""
-        if 'Entitlement' in self.profile:
-            xml_ent_result="".join([xml_template_entitlement.format(Entitlement=ent) for ent in self.profile['Entitlement'] ])
+        if upcc_SUBSCRIPTION_mapping['SERVICENAME'] in self.profile:
+            xml_ent_result="".join([xml_template_entitlement.format(Entitlement=ent) for ent in self.profile[upcc_SUBSCRIPTION_mapping['SERVICENAME']] ])
         
         xml_profile = template_profile.format(MSISDN = self.profile['MSISDN'],
                                       IMSI = self.profile['IMSI'],
