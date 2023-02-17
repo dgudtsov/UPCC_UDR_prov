@@ -34,7 +34,7 @@ from upcc_servicequota import servicequota
 __all__ = []
 __version__ = 0.1
 __date__ = '2023-01-05'
-__updated__ = '2023-01-05'
+__updated__ = '2023-02-18'
 
 DEBUG = 0
 TESTRUN = 0
@@ -327,11 +327,11 @@ class UPCC_Subscriber(object):
                                                   USAGE = quota['USAGE']
                                                   )
             # if quota, then construct transaction
-            xml_profile = xml_template_begin_transact + xml_profile
-            xml_quota = xml_quota + xml_template_end_transact 
+#            xml_profile = xml_template_begin_transact + xml_profile
+#            xml_quota = xml_quota + xml_template_end_transact 
             
         # concat profile with quota
-        return xml_profile + xml_quota
+        return xml_template_begin_transact + xml_profile + xml_quota + xml_template_end_transact
 
 class CLIError(Exception):
     '''Generic exception to raise and log different fatal errors.'''

@@ -6,7 +6,9 @@ Created on 6 янв. 2023 г.
 
 # =CONCAT("<field name=";B1;">";"{";B1;"}";"</field>")
 
-xml_template_custom="<field name={Custom_Name}>{Custom_Value}</field>"
+xml_template_custom="""
+<field name="{Custom_Name}">{Custom_Value}</field>
+""".replace("\n", "")
 
 xml_template_entitlement="""
 <field name="Entitlement">{Entitlement}</field>
