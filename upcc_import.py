@@ -100,6 +100,10 @@ upcc_SUBSCRIPTION_mapping = {
     'SERVICENAME' : 'Entitlement',
     'SRVSTATUS_Frozen' : 'Custom18'
     }
+
+# quota prefix to be added
+quota_prefix='T2-'
+
 #=== Code
 
 class UPCC_Subscriber(object):
@@ -289,13 +293,15 @@ class UPCC_Subscriber(object):
                     
                     # define new dict and transfer there fields from self.attrs 
                     quota = dict()
-                    quota['QUOTA'],quota['USAGE'] = instance['QUOTANAME'],instance['CONSUMPTION']
+                    
+                    # add prefix to quota name
+                    quota['QUOTA'],quota['USAGE'] = quota_prefix+instance['QUOTANAME'],instance['CONSUMPTION']
                     
                     self.quota.append(quota)
         
         return
     
-    def export(self,template_profile,template_quota=None):
+    def export(self,template_profile,template_quota=None,template_quota_usage=None):
         '''
         Export mapped profile into xml using templates
         '''
@@ -315,17 +321,25 @@ class UPCC_Subscriber(object):
                                       ENTITLEMENT = xml_ent_result,
                                       CUSTOM = xml_custom_result )
         
-        xml_quota=""
+        xml_quota,xml_quota_usage="",""
         # if template for quota is defined, then using it. If not then only base profile will be exported
-        if template_quota is not None and len(self.quota)>0:
+        if template_quota is not None and template_quota_usage is not None and len(self.quota)>0:
+
+#xml_template_quota_usage
 
             # enumerate counter to start txRequest id from 2
             for i,quota in enumerate(self.quota, start=2):
-                xml_quota += template_quota.format(REQ = i,
-                                                  MSISDN = self.profile['MSISDN'],
+                
+                xml_quota_usage += template_quota_usage.format( #REQ = i,
                                                   QUOTA = quota['QUOTA'],
                                                   USAGE = quota['USAGE']
                                                   )
+                
+            xml_quota = template_quota.format( #REQ = i,
+                                  IMSI = self.profile['IMSI'],
+                                  QUSAGE = xml_quota_usage
+                                  )
+
             # if quota, then construct transaction
 #            xml_profile = xml_template_begin_transact + xml_profile
 #            xml_quota = xml_quota + xml_template_end_transact 
@@ -450,7 +464,8 @@ USAGE
 
                                 export_records_count+=1                                    
 
-                                xml_result =subs.export(xml_template['create_subs'],xml_template['create_quota'])
+                                xml_result =subs.export(xml_template['create_subs'],xml_template['create_quota'],xml_template['quota_usage'])
+                                #xml_result =subs.export(xml_template['create_subs'])
                                 if verbose>0: 
                                     print (xml_result)
     #                           print (subs.export(xml_template['create_subs']))

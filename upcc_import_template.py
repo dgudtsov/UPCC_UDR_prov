@@ -46,11 +46,12 @@ xml_template_subs="""
 </txRequest>
 """.replace("\n", "")
 
+#<txRequest id="{REQ}">
 xml_template_quota="""
-<txRequest id="{REQ}">
+<txRequest id="1">
 <create createEntityIfNotExist="true">
 <key>
-<MSISDN>{MSISDN}</MSISDN>
+<IMSI>{IMSI}</IMSI>
 </key>
 <entity>
 <data>
@@ -59,19 +60,24 @@ xml_template_quota="""
 <xpath/>
 </data>
 <content>
-<![CDATA[
+<![CDATA[<?xml version="1.0" encoding="UTF-8"?>
 <usage>
 <version>3</version>
-<quota name="{QUOTA}">
-<totalVolume>{USAGE}</totalVolume>
-<Type>pass</Type>
-</quota>
+{QUSAGE}
 </usage>
 ]]>
 </content>
 </entity>
 </create>
 </txRequest>
+""".replace("\n", "")
+
+xml_template_quota_usage="""
+<quota name="{QUOTA}">
+<totalVolume>{USAGE}</totalVolume>
+<Type>quota</Type>
+</quota>
+
 """.replace("\n", "")
 
 # Delete subscribers
@@ -91,5 +97,6 @@ xml_template = {
     'delete' : xml_template_delete_subs
     ,'create_subs' : xml_template_subs
     ,'create_quota' : xml_template_quota
+    ,'quota_usage' : xml_template_quota_usage
     ,'replace_subs': xml_template_replace_subs
     }
