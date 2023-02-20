@@ -42,8 +42,8 @@ PROFILE = 0
 
 timestamp_precision = 10000
 
-#default_chunk_size=10000000
-default_chunk_size=1000
+default_chunk_size=1000000
+#default_chunk_size=500000
 
 import_dir='./import'
 
@@ -417,6 +417,8 @@ USAGE
 
         export_records_count = 0
         
+        f_out = None
+        
         for inpath in paths:
             ### do something with inpath ###
             print("processing "+inpath)
@@ -450,30 +452,38 @@ USAGE
                         elif tag_end in f_line:
                         # once subscriber record is ended, flushing it into object
                             if f_begin and subscriber_begin:
-                                
-                                subs = UPCC_Subscriber (subscriber_rows)
-                                if verbose>0:
-                                    print (json.dumps(subs.attrs, indent=2, default=str))
-                    
-                                subs.mapping()
-                                
+
                                 # create new file on each chunk_size, starting from 0
                                 if export_records_count%default_chunk_size == 0:
                                     timestamp = int(time.time()*timestamp_precision)
                                     print("new chunk on: ",export_records_count," : ",filename_prefix+str(timestamp)+filename_suffix)
+                                    
+                                    # in case new chunk close old file...
+                                    if export_records_count>1:
+                                        f_out.close()
+                                    
+                                    # and start a new one
+                                    f_out = gzip.open(output_dir+filename_prefix+str(timestamp)+filename_suffix, 'at')
+                                
+                                export_records_count+=1
+                                
+                                # Extract
+                                subs = UPCC_Subscriber (subscriber_rows)
+                                if verbose>0:
+                                    print (json.dumps(subs.attrs, indent=2, default=str))
+                                
+                                # Transform
+                                subs.mapping()
 
-                                export_records_count+=1                                    
-
+                                # Load
                                 xml_result =subs.export(xml_template['create_subs'],xml_template['create_quota'],xml_template['quota_usage'])
                                 #xml_result =subs.export(xml_template['create_subs'])
                                 if verbose>0: 
                                     print (xml_result)
-    #                           print (subs.export(xml_template['create_subs']))
-                                
-                                with gzip.open(output_dir+filename_prefix+str(timestamp)+filename_suffix, 'at') as f_out:
-                                    f_out.write("%s\n" % xml_result)
-    
-    
+
+                                f_out.write("%s\n" % xml_result)
+                            
+                            # wait for next subs record
                             subscriber_begin=False
                         else:
                             
@@ -481,7 +491,6 @@ USAGE
                             subscriber_rows.append(f_line)
                     
 #                            print("loaded elements: "+str(subs.elements()))
-                    
 
         print("Total records: ",export_records_count)
         return 0
@@ -509,10 +518,13 @@ if __name__ == "__main__":
         import pstats
         profile_filename = 'upcc_import_profile.txt'
         cProfile.run('main()', profile_filename)
-        statsfile = open("profile_stats.txt", "wb")
-        p = pstats.Stats(profile_filename, stream=statsfile)
-        stats = p.strip_dirs().sort_stats('cumulative')
-        stats.print_stats()
-        statsfile.close()
+#        statsfile = open("profile_stats.txt", "wb")
+#        p = pstats.Stats(profile_filename, stream=statsfile)
+        p = pstats.Stats(profile_filename)
+#        stats = p.strip_dirs().sort_stats('cumulative')
+#        p.sort_stats("time", "name").print_stats()
+        p.sort_stats("cumulative").print_stats(20)
+#        stats.print_stats()
+#        statsfile.close()
         sys.exit(0)
     sys.exit(main())
