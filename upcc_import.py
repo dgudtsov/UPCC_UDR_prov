@@ -22,6 +22,8 @@ import os
 import time
 import gzip
 
+from datetime import timedelta
+
 from argparse import ArgumentParser
 from argparse import RawDescriptionHelpFormatter
 
@@ -419,6 +421,8 @@ USAGE
         
         f_out = None
         
+        time_start = time.time()
+        
         for inpath in paths:
             ### do something with inpath ###
             print("processing "+inpath)
@@ -493,6 +497,7 @@ USAGE
 #                            print("loaded elements: "+str(subs.elements()))
 
         print("Total records: ",export_records_count)
+        print("Execution time: ", str(timedelta(seconds=time.time() - time_start)))
         return 0
     except KeyboardInterrupt:
         ### handle keyboard interrupt ###

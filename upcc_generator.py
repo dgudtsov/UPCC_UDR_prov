@@ -21,7 +21,7 @@ MSISDN_start = 77470000001
 #subscribers_count = 10
 
 # generated subs = chunk_size * chunks_count  
-chunk_size = 1000
+chunk_size = 2000000
 chunks_count = 5
 
 timestamp_precision = 10000
