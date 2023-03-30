@@ -240,7 +240,8 @@ class UPCC_Subscriber(object):
                             self.attrs['SUBSCRIPTION'].append( dict(SERVICENAME=s) )  
                         
                     else:
-                        print("Error: PKGSUBSCRIPTION is not found: "+pkg['PKGNAME'])
+                        #print("Error: PKGSUBSCRIPTION is not found: "+pkg['PKGNAME'])
+                        pass
         
         # SUBSCRIPTION to Entitlement mapping
         if 'SUBSCRIPTION' in self.attrs: 
@@ -313,42 +314,43 @@ class UPCC_Subscriber(object):
                         quota_volume = Q_INITIAL - Q_BALANCE
                     
                     # BALANCE + CONSUPTION > INITIAL
-                    elif Q_CONSUMPTION > Q_INITIAL:
+                    # CONSUMPTION >= INITIAL
+                    elif Q_CONSUMPTION >= Q_INITIAL:
+                    
                         quota_volume = Q_CONSUMPTION
                         
                         if Q_BALANCE>0:
-                           quota_volume = Q_CONSUMPTION
                            
-                           # top-up = INITIAL - BALANCE ?
+                           # top-up = BALANCE
                            #dyn_quota['USAGE'] = Q_INITIAL - Q_BALANCE 
-                           dyn_quota['USAGE'] = Q_BALANCE
+                           dyn_quota['VOLUME'] = Q_BALANCE
                         
-                        # BALANCE = 0
-                        else: 
-                            quota_volume = Q_CONSUMPTION
-                        
-                    elif Q_CONSUMPTION < Q_INITIAL:
+                    #elif Q_CONSUMPTION < Q_INITIAL:
+                    # CONSUMPTION < INITIAL
+                    else:
                         quota_volume = Q_CONSUMPTION
                         
                         # top-up = (BALANCE + CONSUMPTION – INITIAL)
-
-                        dyn_quota['USAGE'] = Q_BALANCE + Q_CONSUMPTION - Q_INITIAL
+                        dyn_quota['VOLUME'] = Q_BALANCE + Q_CONSUMPTION - Q_INITIAL
                         
                     
                     # add prefix to quota name
-                    quota['QUOTA'],quota['USAGE'] = quota_prefix+instance['QUOTANAME'],quota_volume*quota_mult
+                    quota['QUOTA'] = quota_prefix+instance['QUOTANAME']
+                    quota['USAGE'] = quota_volume*quota_mult
                     
                     self.quota.append(quota)
                     
                     if len(dyn_quota)>0:
                         
-                        dyn_quota['QUOTA'] = dyn_quota['INSTANCE'] = quota_prefix+instance['QUOTANAME']
+                        #dyn_quota['QUOTA'] = dyn_quota['INSTANCE'] = quota_prefix+instance['QUOTANAME']
+                        dyn_quota['QUOTA'] = dyn_quota['INSTANCE'] = quota['QUOTA']
                         dyn_quota['INSTANCE'] += str(random.randint(0,100))
+                        dyn_quota['VOLUME'] *= quota_mult
                         self.dyn_quota.append(dyn_quota)  
         
         return
     
-    def export(self,template_profile,template_quota=None,template_quota_usage=None):
+    def export(self,template_profile,template_quota=None,template_quota_usage=None,template_dyn_quota=None):
         '''
         Export mapped profile into xml using templates
         '''
@@ -381,6 +383,13 @@ class UPCC_Subscriber(object):
                                                   QUOTA = quota['QUOTA'],
                                                   USAGE = quota['USAGE']
                                                   )
+            
+            if template_dyn_quota is not None:
+                for quota in self.dyn_quota:
+                    xml_quota_usage += template_dyn_quota.format( #REQ = i,
+                                      QUOTA = quota['QUOTA'],
+                                      VOLUME = quota['VOLUME']
+                                      )
                 
             xml_quota = template_quota.format( #REQ = i,
                                   IMSI = self.profile['IMSI'],
@@ -525,7 +534,7 @@ USAGE
                                 subs.mapping()
 
                                 # Load
-                                xml_result =subs.export(xml_template['create_subs'],xml_template['create_quota'],xml_template['quota_usage'])
+                                xml_result =subs.export(xml_template['create_subs'],xml_template['create_quota'],xml_template['quota_usage'],xml_template['topup_quota'])
                                 #xml_result =subs.export(xml_template['create_subs'])
                                 if verbose>0: 
                                     print (xml_result)

@@ -12,13 +12,13 @@ servicequota=dict()
 
 import csv
 
-with open(servicequota_source, newline='') as csvfile:
-    reader = csv.DictReader(csvfile)
-    for row in reader:
-#        servicequota[row['SERVICENAME']]=row['QUOTANAME']
-        if row['SERVICENAME'] not in servicequota:
-            servicequota[row['SERVICENAME']]=list()
-        servicequota[row['SERVICENAME']].append(row['QUOTANAME'])
+# with open(servicequota_source, newline='') as csvfile:
+#     reader = csv.DictReader(csvfile)
+#     for row in reader:
+#
+#         if row['SERVICENAME'] not in servicequota:
+#             servicequota[row['SERVICENAME']]=list()
+#         servicequota[row['SERVICENAME']].append(row['QUOTANAME'])
 
 if __name__ == "__main__":
     print ("testing module")

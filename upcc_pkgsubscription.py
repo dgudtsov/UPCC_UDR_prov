@@ -12,12 +12,12 @@ pkgsubscription=dict()
 
 import csv
 
-with open(pkg_services_source, newline='') as csvfile:
-    reader = csv.DictReader(csvfile)
-    for row in reader:
-        if row['PACKAGENAME'] not in pkgsubscription:
-            pkgsubscription[row['PACKAGENAME']]=list()
-        pkgsubscription[row['PACKAGENAME']].append(row['SERVICENAME'])
+# with open(pkg_services_source, newline='') as csvfile:
+#     reader = csv.DictReader(csvfile)
+#     for row in reader:
+#         if row['PACKAGENAME'] not in pkgsubscription:
+#             pkgsubscription[row['PACKAGENAME']]=list()
+#         pkgsubscription[row['PACKAGENAME']].append(row['SERVICENAME'])
 
 if __name__ == "__main__":
     print ("testing module")

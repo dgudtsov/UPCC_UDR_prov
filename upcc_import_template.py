@@ -81,10 +81,9 @@ xml_template_quota_usage="""
 </quota>
 """.replace("\n", "")
 
+#<RefInstanceId>{INSTANCE}</RefInstanceId>
 xml_template_quota_topup="""
 <quota name="{QUOTA}">
-<cid>1</cid>
-<RefInstanceId>{INSTANCE}</RefInstanceId>
 <InitialTotalVolume>{VOLUME}</InitialTotalVolume>
 <Type>top-up</Type>
 </quota>
@@ -109,5 +108,6 @@ xml_template = {
     ,'create_subs' : xml_template_subs
     ,'create_quota' : xml_template_quota
     ,'quota_usage' : xml_template_quota_usage
+    ,'topup_quota' : xml_template_quota_topup
     ,'replace_subs': xml_template_replace_subs
     }
