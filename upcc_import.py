@@ -24,6 +24,8 @@ import gzip
 
 from datetime import timedelta
 
+import random
+
 from argparse import ArgumentParser
 from argparse import RawDescriptionHelpFormatter
 
@@ -106,6 +108,9 @@ upcc_SUBSCRIPTION_mapping = {
 # quota prefix to be added
 quota_prefix='T2-'
 
+# quota size multiplier
+quota_mult = 1000
+
 #=== Code
 
 class UPCC_Subscriber(object):
@@ -121,6 +126,9 @@ class UPCC_Subscriber(object):
 
 # stores mapped quota parameters         
         self.quota = list()
+
+# top-up modifiers        
+        self.dyn_quota = list()
 
 # stores mapped udr profile
         self.profile=dict()
@@ -294,12 +302,49 @@ class UPCC_Subscriber(object):
                 for instance in self.attrs['QUOTA']:
                     
                     # define new dict and transfer there fields from self.attrs 
-                    quota = dict()
+                    quota, dyn_quota = dict(), dict() 
+                    
+                    quota_volume = 0
+                    
+                    Q_INITIAL, Q_BALANCE, Q_CONSUMPTION = int(instance['INITIALVALUE']), int(instance['BALANCE']), int(instance['CONSUMPTION'])
+                    
+                    # BALANCE + CONSUPTION <= INITIAL
+                    if Q_BALANCE + Q_CONSUMPTION <= Q_INITIAL:
+                        quota_volume = Q_INITIAL - Q_BALANCE
+                    
+                    # BALANCE + CONSUPTION > INITIAL
+                    elif Q_CONSUMPTION > Q_INITIAL:
+                        quota_volume = Q_CONSUMPTION
+                        
+                        if Q_BALANCE>0:
+                           quota_volume = Q_CONSUMPTION
+                           
+                           # top-up = INITIAL - BALANCE ?
+                           #dyn_quota['USAGE'] = Q_INITIAL - Q_BALANCE 
+                           dyn_quota['USAGE'] = Q_BALANCE
+                        
+                        # BALANCE = 0
+                        else: 
+                            quota_volume = Q_CONSUMPTION
+                        
+                    elif Q_CONSUMPTION < Q_INITIAL:
+                        quota_volume = Q_CONSUMPTION
+                        
+                        # top-up = (BALANCE + CONSUMPTION – INITIAL)
+
+                        dyn_quota['USAGE'] = Q_BALANCE + Q_CONSUMPTION - Q_INITIAL
+                        
                     
                     # add prefix to quota name
-                    quota['QUOTA'],quota['USAGE'] = quota_prefix+instance['QUOTANAME'],instance['CONSUMPTION']
+                    quota['QUOTA'],quota['USAGE'] = quota_prefix+instance['QUOTANAME'],quota_volume*quota_mult
                     
                     self.quota.append(quota)
+                    
+                    if len(dyn_quota)>0:
+                        
+                        dyn_quota['QUOTA'] = dyn_quota['INSTANCE'] = quota_prefix+instance['QUOTANAME']
+                        dyn_quota['INSTANCE'] += str(random.randint(0,100))
+                        self.dyn_quota.append(dyn_quota)  
         
         return
     
@@ -533,3 +578,4 @@ if __name__ == "__main__":
 #        statsfile.close()
         sys.exit(0)
     sys.exit(main())
+    

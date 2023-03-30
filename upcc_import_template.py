@@ -72,13 +72,24 @@ xml_template_quota="""
 </txRequest>
 """.replace("\n", "")
 
+
+#     <cid>5764888998016098543</cid>
 xml_template_quota_usage="""
 <quota name="{QUOTA}">
 <totalVolume>{USAGE}</totalVolume>
 <Type>quota</Type>
 </quota>
-
 """.replace("\n", "")
+
+xml_template_quota_topup="""
+<quota name="{QUOTA}">
+<cid>1</cid>
+<RefInstanceId>{INSTANCE}</RefInstanceId>
+<InitialTotalVolume>{VOLUME}</InitialTotalVolume>
+<Type>top-up</Type>
+</quota>
+""".replace("\n", "")
+
 
 # Delete subscribers
 xml_template_delete_subs="""
