@@ -210,7 +210,7 @@ class UPCC_Subscriber(object):
         # self.profile - dict, containing base profile attributes: MSISDN, IMSI, Ent, Tier, CustomX, etc.
         # example: {'IMSI': '401771121496414', 'MSISDN': '77089675915', 'Custom3': '0', 'Custom6': '0', 'Custom7': '0', 'Custom8': '0'}
         # self.quota - list of dicts, each dict contains: quota name and quota usage
-        # example: [{'QUOTA': '409239-DATA_D_Quota', 'USAGE': '65013247'}, {'QUOTA': '40777900081-DATA_D_Quota', 'USAGE': '865069'}, {'QUOTA': '413102-DATA_D_Quota', 'USAGE': '0'}]
+        # example: [{'QUOTA': '409239-DATA_D_Quota', 'VOLUME': '65013247'}, {'QUOTA': '40777900081-DATA_D_Quota', 'USAGE': '865069'}, {'QUOTA': '413102-DATA_D_Quota', 'USAGE': '0'}]
         '''
         
         # map all attributes were defined in upcc2profile_mappings
@@ -336,7 +336,7 @@ class UPCC_Subscriber(object):
                     
                     # add prefix to quota name
                     quota['QUOTA'] = quota_prefix+instance['QUOTANAME']
-                    quota['USAGE'] = quota_volume*quota_mult
+                    quota['VOLUME'] = quota_volume*quota_mult
                     
                     self.quota.append(quota)
                     
@@ -350,7 +350,32 @@ class UPCC_Subscriber(object):
         
         return
     
-    def export(self,template_profile,template_quota=None,template_quota_usage=None,template_dyn_quota=None):
+    def generate_quota(self,quota,template_quota=None,template_quota_usage=None):
+        '''
+        Prepare xml quota from template for static or dynamic quotas
+        '''
+        
+        xml_quota = xml_quota_usage = ""
+        
+        # if template for quota is defined, then using it. If not then only base profile will be exported
+        if template_quota is not None and template_quota_usage is not None and len(quota)>0:
+
+            # enumerate counter to start txRequest id from 2
+            for i,q in enumerate(quota, start=2):
+                xml_quota_usage += template_quota_usage.format( #REQ = i,
+                                                  QUOTA = q['QUOTA'],
+                                                  VOLUME = q['VOLUME'],
+                                                  INSTANCE = q['QUOTA']+"_"+str(random.randrange(100000,999999))
+                                                  # InstanceId = <QNAME>_RAND(6) 
+                                                  )
+            
+            xml_quota = template_quota.format( #REQ = i,
+                                  IMSI = self.profile['IMSI'],
+                                  QUOTA = xml_quota_usage
+                                  )
+        return xml_quota
+    
+    def export(self,template_profile,template_quota=None,template_quota_usage=None,template_dquota=None,template_dyn_quota=None):
         '''
         Export mapped profile into xml using templates
         '''
@@ -370,38 +395,18 @@ class UPCC_Subscriber(object):
                                       ENTITLEMENT = xml_ent_result,
                                       CUSTOM = xml_custom_result )
         
-        xml_quota,xml_quota_usage="",""
+
+        xml_quota = xml_dyn_quota = xml_quota_usage = ""
+        
         # if template for quota is defined, then using it. If not then only base profile will be exported
         if template_quota is not None and template_quota_usage is not None and len(self.quota)>0:
+            xml_quota = self.generate_quota(self.quota,template_quota,template_quota_usage)
 
-#xml_template_quota_usage
+        if template_dquota is not None and template_dyn_quota is not None and len(self.dyn_quota)>0:
+            xml_dyn_quota = self.generate_quota(self.dyn_quota,template_dquota,template_dyn_quota)
 
-            # enumerate counter to start txRequest id from 2
-            for i,quota in enumerate(self.quota, start=2):
-                
-                xml_quota_usage += template_quota_usage.format( #REQ = i,
-                                                  QUOTA = quota['QUOTA'],
-                                                  USAGE = quota['USAGE']
-                                                  )
-            
-            if template_dyn_quota is not None:
-                for quota in self.dyn_quota:
-                    xml_quota_usage += template_dyn_quota.format( #REQ = i,
-                                      QUOTA = quota['QUOTA'],
-                                      VOLUME = quota['VOLUME']
-                                      )
-                
-            xml_quota = template_quota.format( #REQ = i,
-                                  IMSI = self.profile['IMSI'],
-                                  QUSAGE = xml_quota_usage
-                                  )
-
-            # if quota, then construct transaction
-#            xml_profile = xml_template_begin_transact + xml_profile
-#            xml_quota = xml_quota + xml_template_end_transact 
-            
-        # concat profile with quota
-        return xml_template_begin_transact + xml_profile + xml_quota + xml_template_end_transact
+        # concat profile with quotas
+        return xml_template_begin_transact + xml_profile + xml_quota + xml_dyn_quota + xml_template_end_transact
 
 class CLIError(Exception):
     '''Generic exception to raise and log different fatal errors.'''
@@ -534,7 +539,7 @@ USAGE
                                 subs.mapping()
 
                                 # Load
-                                xml_result =subs.export(xml_template['create_subs'],xml_template['create_quota'],xml_template['quota_usage'],xml_template['topup_quota'])
+                                xml_result =subs.export(xml_template['create_subs'],xml_template['create_quota'],xml_template['quota_usage'],xml_template['create_dquota'],xml_template['topup_quota'])
                                 #xml_result =subs.export(xml_template['create_subs'])
                                 if verbose>0: 
                                     print (xml_result)

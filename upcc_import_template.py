@@ -63,7 +63,7 @@ xml_template_quota="""
 <![CDATA[<?xml version="1.0" encoding="UTF-8"?>
 <usage>
 <version>3</version>
-{QUSAGE}
+{QUOTA}
 </usage>
 ]]>
 </content>
@@ -72,21 +72,48 @@ xml_template_quota="""
 </txRequest>
 """.replace("\n", "")
 
+# Dynamic Quota definition
+xml_template_dyn_quota="""
+<txRequest id="1">
+<create createEntityIfNotExist="true">
+<key>
+<IMSI>{IMSI}</IMSI>
+</key>
+<entity>
+<data>
+<name>DynamicQuota</name>
+<interface>XMLIMPORT</interface>
+<xpath/>
+</data>
+<content>
+<![CDATA[<?xml version="1.0" encoding="UTF-8"?>
 
-#     <cid>5764888998016098543</cid>
+<Definition>
+<version>1</version>
+{QUOTA}
+</Definition>
+]]>
+</content>
+</entity>
+</create>
+</txRequest>
+""".replace("\n", "")
+
+# static (regular) quota usage definition
 xml_template_quota_usage="""
 <quota name="{QUOTA}">
-<totalVolume>{USAGE}</totalVolume>
+<totalVolume>{VOLUME}</totalVolume>
 <Type>quota</Type>
 </quota>
 """.replace("\n", "")
 
-#<RefInstanceId>{INSTANCE}</RefInstanceId>
+# Dynamic Quota configuration definition (usage is defined the same way as regular quota)
 xml_template_quota_topup="""
-<quota name="{QUOTA}">
-<InitialTotalVolume>{VOLUME}</InitialTotalVolume>
+<DynamicQuota name="{QUOTA}">
+<InstanceId>{INSTANCE}</InstanceId>
 <Type>top-up</Type>
-</quota>
+<InitialTotalVolume>{VOLUME}</InitialTotalVolume>
+</DynamicQuota>
 """.replace("\n", "")
 
 
@@ -107,6 +134,7 @@ xml_template = {
     'delete' : xml_template_delete_subs
     ,'create_subs' : xml_template_subs
     ,'create_quota' : xml_template_quota
+    ,'create_dquota' : xml_template_dyn_quota
     ,'quota_usage' : xml_template_quota_usage
     ,'topup_quota' : xml_template_quota_topup
     ,'replace_subs': xml_template_replace_subs
