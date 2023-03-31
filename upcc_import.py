@@ -344,7 +344,7 @@ class UPCC_Subscriber(object):
                         
                         #dyn_quota['QUOTA'] = dyn_quota['INSTANCE'] = quota_prefix+instance['QUOTANAME']
                         dyn_quota['QUOTA'] = dyn_quota['INSTANCE'] = quota['QUOTA']
-                        dyn_quota['INSTANCE'] += str(random.randint(0,100))
+#                        dyn_quota['INSTANCE'] += str(random.randrange(100000,999999))
                         dyn_quota['VOLUME'] *= quota_mult
                         self.dyn_quota.append(dyn_quota)  
         
@@ -375,7 +375,17 @@ class UPCC_Subscriber(object):
                                   )
         return xml_quota
     
-    def export(self,template_profile,template_quota=None,template_quota_usage=None,template_dquota=None,template_dyn_quota=None):
+    def export_quota(self,quota,template_quota=None,template_quota_usage=None):
+        '''
+        Universal mapping for quotas: static and dynamic
+        '''
+        
+        if template_quota is not None and template_quota_usage is not None and len(quota)>0:
+            return self.generate_quota(quota,template_quota,template_quota_usage)
+        return ""
+    
+    #def export_profile(self,template_profile,template_quota=None,template_quota_usage=None,template_dquota=None,template_dyn_quota=None):
+    def export_profile(self,template_profile):
         '''
         Export mapped profile into xml using templates
         '''
@@ -395,18 +405,21 @@ class UPCC_Subscriber(object):
                                       ENTITLEMENT = xml_ent_result,
                                       CUSTOM = xml_custom_result )
         
+        return xml_profile
 
-        xml_quota = xml_dyn_quota = xml_quota_usage = ""
-        
-        # if template for quota is defined, then using it. If not then only base profile will be exported
-        if template_quota is not None and template_quota_usage is not None and len(self.quota)>0:
-            xml_quota = self.generate_quota(self.quota,template_quota,template_quota_usage)
-
-        if template_dquota is not None and template_dyn_quota is not None and len(self.dyn_quota)>0:
-            xml_dyn_quota = self.generate_quota(self.dyn_quota,template_dquota,template_dyn_quota)
-
-        # concat profile with quotas
-        return xml_template_begin_transact + xml_profile + xml_quota + xml_dyn_quota + xml_template_end_transact
+        # xml_quota = self.export_quota(self.quota,template_quota,template_quota_usage) 
+        # xml_dyn_quota = self.export_quota (self.dyn_quota,template_dquota,template_dyn_quota)
+        # xml_quota_usage = ""
+        #
+        # # if template for quota is defined, then using it. If not then only base profile will be exported
+        # if template_quota is not None and template_quota_usage is not None and len(self.quota)>0:
+        #     xml_quota = self.generate_quota(self.quota,template_quota,template_quota_usage)
+        #
+        # if template_dquota is not None and template_dyn_quota is not None and len(self.dyn_quota)>0:
+        #     xml_dyn_quota = self.generate_quota(self.dyn_quota,template_dquota,template_dyn_quota)
+        #
+        # # concat profile with quotas
+        # return xml_template_begin_transact + xml_profile + xml_quota + xml_dyn_quota + xml_template_end_transact
 
 class CLIError(Exception):
     '''Generic exception to raise and log different fatal errors.'''
@@ -539,7 +552,16 @@ USAGE
                                 subs.mapping()
 
                                 # Load
-                                xml_result =subs.export(xml_template['create_subs'],xml_template['create_quota'],xml_template['quota_usage'],xml_template['create_dquota'],xml_template['topup_quota'])
+                                # xml_template_begin_transact + xml_profile + xml_quota + xml_dyn_quota + xml_template_end_transact
+                                xml_result = xml_template_begin_transact
+                                
+#                                xml_result += subs.export_profile(xml_template['create_subs'],xml_template['create_quota'],xml_template['quota_usage'],xml_template['create_dquota'],xml_template['topup_quota'])
+                                xml_result += subs.export_profile(xml_template['create_subs'])
+                                
+                                xml_result += subs.export_quota(subs.quota, xml_template['create_quota'], xml_template['quota_usage'])
+                                xml_result += subs.export_quota(subs.dyn_quota, xml_template['create_dquota'], xml_template['topup_quota'])
+                                
+                                xml_result += xml_template_end_transact
                                 #xml_result =subs.export(xml_template['create_subs'])
                                 if verbose>0: 
                                     print (xml_result)
