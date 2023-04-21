@@ -74,10 +74,12 @@ file_end="<ENDFILE>\n"
 
 #define fields mapping from UPCC to UDR profile
 upcc2profile_mappings = {
+# fake SID field for master/slave mapping
+'SID':'SID',
 'MSISDN':'MSISDN',
 'SUBSCRIBERIDENTIFIER':'IMSI',
 'STATION':'Custom20',
-'USRMASTERIDENTIFIER':'Custom20',
+#'USRMASTERIDENTIFIER':'Custom20',
 'BILLINGCYCLEDAY':'BillingDay',
 
 'EXATTR1':'Custom1',
@@ -99,11 +101,25 @@ upcc2profile_mappings = {
 'EXATTR17':'Custom17',
     }
 
+upcc_STATION_mapping = {
+    '1' : 'Master',
+    '2' : 'Slave'
+    }
+
 SRVSTATUS_Frozen = 1
+
 upcc_SUBSCRIPTION_mapping = {
     'SERVICENAME' : 'Entitlement',
     'SRVSTATUS_Frozen' : 'Custom18'
     }
+
+# hash for master to slave mapping
+SID_IMSI = {
+#    'SID' : 'IMSI'
+    }
+
+#master quota prefix
+master_quota_prefix='CLONE-'
 
 # quota prefix to be added
 quota_prefix='T2-'
@@ -216,6 +232,18 @@ class UPCC_Subscriber(object):
         # map all attributes were defined in upcc2profile_mappings
         [ self.profile.update({upcc2profile_mappings[k]:self.attrs[k]}) for k in self.attrs if k in upcc2profile_mappings ]
         
+        if self.profile[upcc2profile_mappings['STATION']] in upcc_STATION_mapping:
+            self.profile[upcc2profile_mappings['STATION']] = upcc_STATION_mapping[self.profile[upcc2profile_mappings['STATION']]]
+            
+            # if slave
+            if self.profile[upcc2profile_mappings['STATION']] == upcc_STATION_mapping['2']:
+                if self.profile[upcc2profile_mappings['SID']] in SID_IMSI:
+                    self.profile[upcc2profile_mappings['STATION']] = SID_IMSI[self.profile[upcc2profile_mappings['SID']]]
+                    print('Slave = Master SID =',self.profile[upcc2profile_mappings['SID']])
+                else:
+                    print('Slave has no Master: SID =',self.profile[upcc2profile_mappings['SID']])
+            
+        
         # BillingDay normalization
         try:
             if int(self.profile['BillingDay'])<0 or int(self.profile['BillingDay'])>31:  
@@ -301,6 +329,10 @@ class UPCC_Subscriber(object):
             if len(self.attrs['QUOTA'])>0 :
                                               
                 for instance in self.attrs['QUOTA']:
+                    
+                    # if subs is master the store imsi in hash sid-imsi
+                    if instance['QUOTANAME'].startswith(master_quota_prefix) and self.profile[upcc2profile_mappings['STATION']] == upcc_STATION_mapping['1'] :
+                        SID_IMSI[self.profile[upcc2profile_mappings['SID']]] = self.profile[upcc2profile_mappings['SUBSCRIBERIDENTIFIER']] 
                     
                     # define new dict and transfer there fields from self.attrs 
                     quota, dyn_quota = dict(), dict() 
