@@ -31,8 +31,10 @@ do
 	MASTER=${DIR}/Master_${NAME}_csv.txt.gz
 
 	time zcat $INPUT | sed ':a;N;$!ba;s/;\n/;/g'  |grep SID= | gzip >$OUTPUT
-
+    
+    echo generating $SLAVE
 	time zcat $OUTPUT | grep STATION=2 | gzip >$SLAVE
+	echo generating $MASTER
 	time zcat $OUTPUT | grep STATION=1 | gzip >$MASTER
 
 	rm $OUTPUT
