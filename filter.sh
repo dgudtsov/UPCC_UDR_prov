@@ -42,6 +42,8 @@ do
     wait $PID
 
 	rm $OUTPUT
+	
+	echo done $INPUT
 
 done
 

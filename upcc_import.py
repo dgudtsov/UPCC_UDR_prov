@@ -49,9 +49,11 @@ timestamp_precision = 10000
 default_chunk_size=1000000
 #default_chunk_size=500000
 
-import_dir='./import'
+#import_dir='./import'
+import_dir='./csv'
 
-output_dir='./output/'
+default_output_dir='./output/'
+
 filename_prefix='i_'
 filename_suffix='.ixml.gz'
 
@@ -498,6 +500,11 @@ USAGE
         parser.add_argument("-i", "--include", dest="include", help="only include paths matching this regex pattern. Note: exclude is given preference over include. [default: %(default)s]", metavar="RE" )
         parser.add_argument("-e", "--exclude", dest="exclude", help="exclude paths matching this regex pattern. [default: %(default)s]", metavar="RE" )
         parser.add_argument('-V', '--version', action='version', version=program_version_message)
+        
+        parser.add_argument("-f", "--format", dest="format", required=False, choices=['csv','raw'], help="format: csv or raw, [default: %(default)s]", default='csv')
+
+        parser.add_argument("-o", "--output", dest="output_dir", help="output directory [default: %(default)s]", default=default_output_dir)
+        
 #        parser.add_argument(dest="paths", action='append', help="paths to folder(s) with source file(s) [default: %(default)s]", metavar="path", nargs='*', default=import_dir)
         parser.add_argument(dest="paths", help="paths to folder(s) with source file(s) [default: %(default)s]", metavar="path", nargs='*', default=import_dir)
 
@@ -510,6 +517,9 @@ USAGE
         recurse = args.recurse
         inpat = args.include
         expat = args.exclude
+        format = args.format
+        
+        output_dir = args.output_dir
 
         if verbose > 0:
             print("Verbose mode on")
@@ -536,78 +546,94 @@ USAGE
                 print("loading: "+inp)
                 
                 with gzip.open(inpath+"/"+inp, 'rt') as f_inp:
+                    
                     while True:
                         
                         f_line = f_inp.readline()
                         
                         if not f_line:
                             break
-                
-                        if file_begin in f_line:
-                            f_begin=True
-                            continue
                         
-                        elif file_end in f_line:
-                            f_begin=False
-                            break
-                        
-                        elif tag_begin in f_line:
-                        # prepare for the new subscriber record
-                            subscriber_begin=True
-                            subscriber_rows=[]
-                            continue
-                    
-                        elif tag_end in f_line:
-                        # once subscriber record is ended, flushing it into object
-                            if f_begin and subscriber_begin:
-
-                                # create new file on each chunk_size, starting from 0
-                                if export_records_count%default_chunk_size == 0:
-                                    timestamp = int(time.time()*timestamp_precision)
-                                    print("new chunk on: ",export_records_count," : ",filename_prefix+str(timestamp)+filename_suffix)
-                                    
-                                    # in case new chunk close old file...
-                                    if export_records_count>1:
-                                        f_out.close()
-                                    
-                                    # and start a new one
-                                    f_out = gzip.open(output_dir+filename_prefix+str(timestamp)+filename_suffix, 'at')
-                                
-                                export_records_count+=1
-                                
-                                # Extract
-                                subs = UPCC_Subscriber (subscriber_rows)
-                                if verbose>0:
-                                    print (json.dumps(subs.attrs, indent=2, default=str))
-                                
-                                # Transform
-                                subs.mapping()
-
-                                # Load
-                                # xml_template_begin_transact + xml_profile + xml_quota + xml_dyn_quota + xml_template_end_transact
-                                xml_result = xml_template_begin_transact
-                                
-#                                xml_result += subs.export_profile(xml_template['create_subs'],xml_template['create_quota'],xml_template['quota_usage'],xml_template['create_dquota'],xml_template['topup_quota'])
-                                xml_result += subs.export_profile(xml_template['create_subs'])
-                                
-                                xml_result += subs.export_quota(subs.quota, xml_template['create_quota'], xml_template['quota_usage'])
-                                xml_result += subs.export_quota(subs.dyn_quota, xml_template['create_dquota'], xml_template['topup_quota'])
-                                
-                                xml_result += xml_template_end_transact
-                                #xml_result =subs.export(xml_template['create_subs'])
-                                if verbose>0: 
-                                    print (xml_result)
-
-                                f_out.write("%s\n" % xml_result)
+                        if format == 'csv':
                             
-                            # wait for next subs record
-                            subscriber_begin=False
+                            pass
+                            subscriber_rows = f_line.split('\t')
+                            
+                            f_begin = subscriber_begin = subscriber_end = True
+                        
                         else:
+                
+                            if file_begin in f_line:
+                                f_begin=True
+                                continue
                             
-                        # accumulating rows into list
-                            subscriber_rows.append(f_line)
-                    
-#                            print("loaded elements: "+str(subs.elements()))
+                            elif file_end in f_line:
+                                f_begin=False
+                                break
+                            
+                            elif tag_begin in f_line:
+                            # prepare for the new subscriber record
+                                subscriber_begin=True
+                                subscriber_end=False
+                                subscriber_rows=[]
+                                continue
+                        
+                            elif tag_end in f_line:
+                                subscriber_end=True
+                                
+                            else:
+                            # accumulating rows into list
+                                subscriber_rows.append(f_line)
+                                                                
+                                
+                    # once subscriber record is ended, flushing it into object
+                        if f_begin and subscriber_begin and subscriber_end:
+
+                            # create new file on each chunk_size, starting from 0
+                            if export_records_count%default_chunk_size == 0:
+                                timestamp = int(time.time()*timestamp_precision)
+                                print("new chunk on: ",export_records_count," : ",filename_prefix+str(timestamp)+filename_suffix)
+                                
+                                # in case new chunk close old file...
+                                if export_records_count>1:
+                                    f_out.close()
+                                
+                                # and start a new one
+                                f_out = gzip.open(output_dir+filename_prefix+str(timestamp)+filename_suffix, 'at')
+                            
+                            export_records_count+=1
+                            
+                            # Extract
+                            subs = UPCC_Subscriber (subscriber_rows)
+                            if verbose>0:
+                                print (json.dumps(subs.attrs, indent=2, default=str))
+                            
+                            # Transform
+                            subs.mapping()
+
+                            # Load
+                            # xml_template_begin_transact + xml_profile + xml_quota + xml_dyn_quota + xml_template_end_transact
+                            xml_result = xml_template_begin_transact
+                            
+#                                xml_result += subs.export_profile(xml_template['create_subs'],xml_template['create_quota'],xml_template['quota_usage'],xml_template['create_dquota'],xml_template['topup_quota'])
+                            xml_result += subs.export_profile(xml_template['create_subs'])
+                            
+                            xml_result += subs.export_quota(subs.quota, xml_template['create_quota'], xml_template['quota_usage'])
+                            xml_result += subs.export_quota(subs.dyn_quota, xml_template['create_dquota'], xml_template['topup_quota'])
+                            
+                            xml_result += xml_template_end_transact
+                            #xml_result =subs.export(xml_template['create_subs'])
+                            if verbose>0: 
+                                print (xml_result)
+
+                            f_out.write("%s\n" % xml_result)
+                        
+                        # wait for next subs record
+                        subscriber_begin=False
+                        subscriber_end=False
+
+                        
+    #                            print("loaded elements: "+str(subs.elements()))
 
         print("Total records: ",export_records_count)
         print("Execution time: ", str(timedelta(seconds=time.time() - time_start)))
