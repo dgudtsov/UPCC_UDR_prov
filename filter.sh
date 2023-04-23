@@ -30,7 +30,7 @@ do
 	SLAVE=${DIR}/Slave_${NAME}_csv.txt.gz
 	MASTER=${DIR}/Master_${NAME}_csv.txt.gz
 
-	time zcat $INPUT | head -n 1000 | sed ':a;N;$!ba;s/;\n/;/g;s/<SUBEND//g'  |grep SID= | gzip >$OUTPUT
+	time zcat $INPUT | sed ':a;N;$!ba;s/;\n/;/g;s/<SUBEND//g'  |grep SID= | gzip >$OUTPUT
     
     echo generating $SLAVE
 	zcat $OUTPUT | grep STATION=2 | gzip >$SLAVE &

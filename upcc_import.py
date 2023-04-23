@@ -52,6 +52,9 @@ default_chunk_size=1000000
 #import_dir='./import'
 import_dir='./csv'
 
+# only files ends with this suffix will be imported
+input_file_suffix='.txt.gz'
+
 default_output_dir='./output/'
 
 filename_prefix='i_'
@@ -242,6 +245,7 @@ class UPCC_Subscriber(object):
                 if self.profile[upcc2profile_mappings['SID']] in SID_IMSI:
                     self.profile[upcc2profile_mappings['STATION']] = SID_IMSI[self.profile[upcc2profile_mappings['SID']]]
                     print('Slave = Master SID =',self.profile[upcc2profile_mappings['SID']])
+                    print('Profile: ',json.dumps(self.profile, indent=2, default=str))
                 else:
                     print('Slave has no Master: SID =',self.profile[upcc2profile_mappings['SID']])
             
@@ -433,11 +437,15 @@ class UPCC_Subscriber(object):
         if upcc_SUBSCRIPTION_mapping['SERVICENAME'] in self.profile:
             xml_ent_result="".join([xml_template_entitlement.format(Entitlement=ent) for ent in self.profile[upcc_SUBSCRIPTION_mapping['SERVICENAME']] ])
         
-        xml_profile = template_profile.format(MSISDN = self.profile['MSISDN'],
+        try:
+            xml_profile = template_profile.format(MSISDN = self.profile['MSISDN'],
                                       IMSI = self.profile['IMSI'],
                                       BillingDay = self.profile['BillingDay'],
                                       ENTITLEMENT = xml_ent_result,
                                       CUSTOM = xml_custom_result )
+        except:
+            print('Key error for profile: ',json.dumps(self.profile, indent=2, default=str))
+            return ""
         
         return xml_profile
 
@@ -541,99 +549,106 @@ USAGE
             ### do something with inpath ###
             print("processing "+inpath)
                        
-            for inp in next(os.walk(inpath), (None, None, []))[2]:
+#            for inp in next(os.walk(inpath), (None, None, []))[2]:
+
+            for path, directories, files in os.walk(inpath):
+                files.sort()
+                for inp in files:
+                    if inp.endswith(input_file_suffix):                
                 
-                print("loading: "+inp)
-                
-                with gzip.open(inpath+"/"+inp, 'rt') as f_inp:
-                    
-                    while True:
+                        print("loading: "+inp)
                         
-                        f_line = f_inp.readline()
+                        with gzip.open(inpath+"/"+inp, 'rt') as f_inp:
+                            
+                            while True:
+                                
+                                f_line = f_inp.readline()
+                                
+                                if not f_line:
+                                    break
+                                
+                                if format == 'csv':
+                                    
+                                    pass
+                                    subscriber_rows = f_line.split('\t')
+                                    
+                                    f_begin = subscriber_begin = subscriber_end = True
+                                
+                                else:
                         
-                        if not f_line:
-                            break
-                        
-                        if format == 'csv':
-                            
-                            pass
-                            subscriber_rows = f_line.split('\t')
-                            
-                            f_begin = subscriber_begin = subscriber_end = True
-                        
-                        else:
-                
-                            if file_begin in f_line:
-                                f_begin=True
-                                continue
-                            
-                            elif file_end in f_line:
-                                f_begin=False
-                                break
-                            
-                            elif tag_begin in f_line:
-                            # prepare for the new subscriber record
-                                subscriber_begin=True
+                                    if file_begin in f_line:
+                                        f_begin=True
+                                        continue
+                                    
+                                    elif file_end in f_line:
+                                        f_begin=False
+                                        break
+                                    
+                                    elif tag_begin in f_line:
+                                    # prepare for the new subscriber record
+                                        subscriber_begin=True
+                                        subscriber_end=False
+                                        subscriber_rows=[]
+                                        continue
+                                
+                                    elif tag_end in f_line:
+                                        subscriber_end=True
+                                        
+                                    else:
+                                    # accumulating rows into list
+                                        subscriber_rows.append(f_line)
+                                                                        
+                                        
+                            # once subscriber record is ended, flushing it into object
+                                if f_begin and subscriber_begin and subscriber_end:
+        
+                                    # create new file on each chunk_size, starting from 0
+                                    if export_records_count%default_chunk_size == 0:
+                                        timestamp = int(time.time()*timestamp_precision)
+                                        print("new chunk on: ",export_records_count," : ",filename_prefix+str(timestamp)+filename_suffix)
+                                        
+                                        # in case new chunk close old file...
+                                        if export_records_count>1:
+                                            f_out.close()
+                                        
+                                        # and start a new one
+                                        f_out = gzip.open(output_dir+filename_prefix+str(timestamp)+filename_suffix, 'at')
+                                    
+                                    if len(subscriber_rows)>0:
+                                    
+                                        export_records_count+=1
+                                        
+                                        # Extract
+                                        subs = UPCC_Subscriber (subscriber_rows)
+                                        if verbose>0:
+                                            print (json.dumps(subs.attrs, indent=2, default=str))
+                                        
+                                        # Transform
+                                        subs.mapping()
+            
+                                        # Load
+                                        # xml_template_begin_transact + xml_profile + xml_quota + xml_dyn_quota + xml_template_end_transact
+                                        xml_result = xml_template_begin_transact
+                                        
+            #                                xml_result += subs.export_profile(xml_template['create_subs'],xml_template['create_quota'],xml_template['quota_usage'],xml_template['create_dquota'],xml_template['topup_quota'])
+                                        xml_result += subs.export_profile(xml_template['create_subs'])
+                                        
+                                        xml_result += subs.export_quota(subs.quota, xml_template['create_quota'], xml_template['quota_usage'])
+                                        xml_result += subs.export_quota(subs.dyn_quota, xml_template['create_dquota'], xml_template['topup_quota'])
+                                        
+                                        xml_result += xml_template_end_transact
+                                        #xml_result =subs.export(xml_template['create_subs'])
+                                        if verbose>0: 
+                                            print (xml_result)
+            
+                                        f_out.write("%s\n" % xml_result)
+                                
+                                # wait for next subs record
+                                subscriber_begin=False
                                 subscriber_end=False
-                                subscriber_rows=[]
-                                continue
-                        
-                            elif tag_end in f_line:
-                                subscriber_end=True
+        
                                 
-                            else:
-                            # accumulating rows into list
-                                subscriber_rows.append(f_line)
-                                                                
-                                
-                    # once subscriber record is ended, flushing it into object
-                        if f_begin and subscriber_begin and subscriber_end:
-
-                            # create new file on each chunk_size, starting from 0
-                            if export_records_count%default_chunk_size == 0:
-                                timestamp = int(time.time()*timestamp_precision)
-                                print("new chunk on: ",export_records_count," : ",filename_prefix+str(timestamp)+filename_suffix)
-                                
-                                # in case new chunk close old file...
-                                if export_records_count>1:
-                                    f_out.close()
-                                
-                                # and start a new one
-                                f_out = gzip.open(output_dir+filename_prefix+str(timestamp)+filename_suffix, 'at')
-                            
-                            export_records_count+=1
-                            
-                            # Extract
-                            subs = UPCC_Subscriber (subscriber_rows)
-                            if verbose>0:
-                                print (json.dumps(subs.attrs, indent=2, default=str))
-                            
-                            # Transform
-                            subs.mapping()
-
-                            # Load
-                            # xml_template_begin_transact + xml_profile + xml_quota + xml_dyn_quota + xml_template_end_transact
-                            xml_result = xml_template_begin_transact
-                            
-#                                xml_result += subs.export_profile(xml_template['create_subs'],xml_template['create_quota'],xml_template['quota_usage'],xml_template['create_dquota'],xml_template['topup_quota'])
-                            xml_result += subs.export_profile(xml_template['create_subs'])
-                            
-                            xml_result += subs.export_quota(subs.quota, xml_template['create_quota'], xml_template['quota_usage'])
-                            xml_result += subs.export_quota(subs.dyn_quota, xml_template['create_dquota'], xml_template['topup_quota'])
-                            
-                            xml_result += xml_template_end_transact
-                            #xml_result =subs.export(xml_template['create_subs'])
-                            if verbose>0: 
-                                print (xml_result)
-
-                            f_out.write("%s\n" % xml_result)
-                        
-                        # wait for next subs record
-                        subscriber_begin=False
-                        subscriber_end=False
-
-                        
-    #                            print("loaded elements: "+str(subs.elements()))
+            #                            print("loaded elements: "+str(subs.elements()))
 
         print("Total records: ",export_records_count)
         print("Execution time: ", str(timedelta(seconds=time.time() - time_start)))
