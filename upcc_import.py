@@ -22,6 +22,9 @@ import os
 import time
 import gzip
 
+import logging
+from logging import StreamHandler, Formatter, FileHandler, handlers
+
 from datetime import timedelta
 
 import random
@@ -34,6 +37,7 @@ import json
 from upcc_import_template import *
 from upcc_pkgsubscription import pkgsubscription
 from upcc_servicequota import servicequota
+from asyncio.log import logger
 
 __all__ = []
 __version__ = 0.1
@@ -45,6 +49,8 @@ TESTRUN = 0
 PROFILE = 0
 
 timestamp_precision = 10000
+
+time_delta = 10
 
 default_chunk_size=1000000
 #default_chunk_size=500000
@@ -61,6 +67,11 @@ filename_prefix='i_'
 filename_suffix='.ixml.gz'
 
 export_result = 'export.csv.gz'
+
+#logging
+logFilePath = "./log/export.log"
+maxBytes=50000000 
+backupCount=10
 
 #=== Constants
 fields_names={
@@ -132,6 +143,9 @@ quota_prefix='T2-'
 # quota size multiplier
 quota_mult = 1000
 
+# global errors counter
+errors_count = 0
+
 #=== Code
 
 class UPCC_Subscriber(object):
@@ -153,6 +167,9 @@ class UPCC_Subscriber(object):
 
 # stores mapped udr profile
         self.profile=dict()
+        
+        self.logger = logging.getLogger(__name__)
+
 
 #        subscriber_begin=False
         
@@ -234,6 +251,8 @@ class UPCC_Subscriber(object):
         # example: [{'QUOTA': '409239-DATA_D_Quota', 'VOLUME': '65013247'}, {'QUOTA': '40777900081-DATA_D_Quota', 'USAGE': '865069'}, {'QUOTA': '413102-DATA_D_Quota', 'USAGE': '0'}]
         '''
         
+        global errors_count
+        
         # map all attributes were defined in upcc2profile_mappings
         [ self.profile.update({upcc2profile_mappings[k]:self.attrs[k]}) for k in self.attrs if k in upcc2profile_mappings ]
         
@@ -243,11 +262,13 @@ class UPCC_Subscriber(object):
             # if slave
             if self.profile[upcc2profile_mappings['STATION']] == upcc_STATION_mapping['2']:
                 if self.profile[upcc2profile_mappings['SID']] in SID_IMSI:
-                    self.profile[upcc2profile_mappings['STATION']] = SID_IMSI[self.profile[upcc2profile_mappings['SID']]]
-                    print('Slave = Master SID =',self.profile[upcc2profile_mappings['SID']])
-                    print('Profile: ',json.dumps(self.profile, indent=2, default=str))
+                #    self.profile[upcc2profile_mappings['STATION']] = SID_IMSI[self.profile[upcc2profile_mappings['SID']]]
+                    self.logger.debug('Slave = Master SID = %s', self.profile[upcc2profile_mappings['SID']])
+                    self.logger.debug('Profile: %s', json.dumps(self.profile, indent=2, default=str))
                 else:
-                    print('Slave has no Master: SID =',self.profile[upcc2profile_mappings['SID']])
+                    self.logger.error('Slave has no Master: SID = %s', self.profile[upcc2profile_mappings['SID']])
+                    self.logger.debug('Profile: %s', json.dumps(self.profile, indent=2, default=str))
+                    errors_count+=1
             
         
         # BillingDay normalization
@@ -428,6 +449,8 @@ class UPCC_Subscriber(object):
         Export mapped profile into xml using templates
         '''
         
+        global errors_count
+        
         # generate xml set for custom fields
         xml_custom_result=""
         xml_custom_result="".join([xml_template_custom.format(Custom_Name=attr,Custom_Value=self.profile[attr]) for attr in self.profile if 'Custom' in attr])
@@ -444,7 +467,11 @@ class UPCC_Subscriber(object):
                                       ENTITLEMENT = xml_ent_result,
                                       CUSTOM = xml_custom_result )
         except:
-            print('Key error for profile: ',json.dumps(self.profile, indent=2, default=str))
+            self.logger.error('Key error for profile, SID=%s', self.profile[upcc2profile_mappings['SID']])
+            self.logger.debug('Profile: %s', json.dumps(self.profile, indent=2, default=str))
+            
+            errors_count+=1
+            
             return ""
         
         return xml_profile
@@ -476,6 +503,8 @@ class CLIError(Exception):
 def main(argv=None): # IGNORE:C0111
     '''Command line options.'''
 
+    global errors_count
+    
     if argv is None:
         argv = sys.argv
     else:
@@ -528,7 +557,33 @@ USAGE
         format = args.format
         
         output_dir = args.output_dir
+        
+        logger = logging.getLogger(__name__)
+        logger.setLevel(logging.DEBUG)
+        
+        formatter = logging.Formatter('[%(asctime)s: %(levelname)s] %(message)s')
+        
+        #console
+        handler = StreamHandler(stream=sys.stdout)
+        handler.setFormatter(formatter)
+        handler.setLevel(logging.INFO)
+        logger.propagate=False
+        
+        #file
+#        file_handler = handlers.TimedRotatingFileHandler(filename=logFilePath, when='midnight', backupCount=10)
+        file_handler = handlers.RotatingFileHandler(filename=logFilePath, maxBytes=maxBytes , backupCount=backupCount)
 
+        file_handler.setFormatter(formatter)
+        file_handler.setLevel(logging.DEBUG)
+
+        logger.addHandler(file_handler)
+        logger.addHandler(handler)
+        
+        logger.handlers[0].doRollover()
+        
+        logger.info('Application started')
+        logger.info('Logging output to: %s',logFilePath)
+        
         if verbose > 0:
             print("Verbose mode on")
             if recurse:
@@ -543,11 +598,12 @@ USAGE
         
         f_out = None
         
-        time_start = time.time()
+        time_start = previous_time = time.time()
         
         for inpath in paths:
             ### do something with inpath ###
-            print("processing "+inpath)
+#            print("processing "+inpath)
+            logger.info("processing "+inpath)
                        
 #            for inp in next(os.walk(inpath), (None, None, []))[2]:
 
@@ -556,7 +612,7 @@ USAGE
                 for inp in files:
                     if inp.endswith(input_file_suffix):                
                 
-                        print("loading: "+inp)
+                        logger.info("loading: "+inp)
                         
                         with gzip.open(inpath+"/"+inp, 'rt') as f_inp:
                             
@@ -605,7 +661,7 @@ USAGE
                                     # create new file on each chunk_size, starting from 0
                                     if export_records_count%default_chunk_size == 0:
                                         timestamp = int(time.time()*timestamp_precision)
-                                        print("new chunk on: ",export_records_count," : ",filename_prefix+str(timestamp)+filename_suffix)
+                                        logger.info("new chunk on: "+str(export_records_count)+" : "+filename_prefix+str(timestamp)+filename_suffix)
                                         
                                         # in case new chunk close old file...
                                         if export_records_count>1:
@@ -618,10 +674,16 @@ USAGE
                                     
                                         export_records_count+=1
                                         
+                                        
+                                         
+                                        if time.time()  - previous_time  > time_delta:
+                                            previous_time = time.time()
+                                            logger.info("processed records: %s", str(export_records_count))
+                                        
                                         # Extract
                                         subs = UPCC_Subscriber (subscriber_rows)
                                         if verbose>0:
-                                            print (json.dumps(subs.attrs, indent=2, default=str))
+                                            logger.debug(json.dumps(subs.attrs, indent=2, default=str))
                                         
                                         # Transform
                                         subs.mapping()
@@ -639,7 +701,7 @@ USAGE
                                         xml_result += xml_template_end_transact
                                         #xml_result =subs.export(xml_template['create_subs'])
                                         if verbose>0: 
-                                            print (xml_result)
+                                            logger.debug (xml_result)
             
                                         f_out.write("%s\n" % xml_result)
                                 
@@ -650,8 +712,9 @@ USAGE
                                 
             #                            print("loaded elements: "+str(subs.elements()))
 
-        print("Total records: ",export_records_count)
-        print("Execution time: ", str(timedelta(seconds=time.time() - time_start)))
+        logger.info("Total records: "+str(export_records_count))
+        logger.info("Execution time: " + str(timedelta(seconds=time.time() - time_start)))
+        logger.info("Total errors: %s check log file at %s",str(errors_count),logFilePath)
         return 0
     except KeyboardInterrupt:
         ### handle keyboard interrupt ###

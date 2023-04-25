@@ -44,6 +44,7 @@ do
 	rm $OUTPUT
 	
 	echo done $INPUT
+	ls -la $INPUT $MASTER $SLAVE
 
 done
 
