@@ -262,13 +262,16 @@ class UPCC_Subscriber(object):
             # if slave
             if self.profile[upcc2profile_mappings['STATION']] == upcc_STATION_mapping['2']:
                 if self.profile[upcc2profile_mappings['SID']] in SID_IMSI:
-                #    self.profile[upcc2profile_mappings['STATION']] = SID_IMSI[self.profile[upcc2profile_mappings['SID']]]
+                    self.profile[upcc2profile_mappings['STATION']] = SID_IMSI[self.profile[upcc2profile_mappings['SID']]]
                     self.logger.debug('Slave = Master SID = %s', self.profile[upcc2profile_mappings['SID']])
                     self.logger.debug('Profile: %s', json.dumps(self.profile, indent=2, default=str))
                 else:
                     self.logger.error('Slave has no Master: SID = %s', self.profile[upcc2profile_mappings['SID']])
                     self.logger.debug('Profile: %s', json.dumps(self.profile, indent=2, default=str))
                     errors_count+=1
+            
+            # skip slaves without master
+                    return False
             
         
         # BillingDay normalization
@@ -277,6 +280,24 @@ class UPCC_Subscriber(object):
                 raise ValueError
         except:
             self.profile['BillingDay'] = 0
+
+        # skip subs if there are no mandatory fields are refined
+        if 'IMSI' not in self.profile or 'MSISDN' not in self.profile:
+            
+            self.logger.error('IMSI or MSISDN is missing for profile, SID=%s', self.profile[upcc2profile_mappings['SID']])
+            self.logger.debug('Profile: %s', json.dumps(self.profile, indent=2, default=str))
+            
+            errors_count+=1
+                        
+            return False        
+        
+        # populate SID_IMSI dict with masters
+        if self.profile[upcc2profile_mappings['STATION']] == upcc_STATION_mapping['1'] :
+            if self.profile[upcc2profile_mappings['SID']] not in SID_IMSI:
+                SID_IMSI[self.profile[upcc2profile_mappings['SID']]] = self.profile[upcc2profile_mappings['SUBSCRIBERIDENTIFIER']]
+            else:
+                self.logger.error("Duplicate SID-IMSI pair: SID=%s, IMSI=%s",self.profile[upcc2profile_mappings['SID']],self.profile[upcc2profile_mappings['SUBSCRIBERIDENTIFIER']])
+        
 
         
         #PKGSUBSCRIPTION to SUBSCRIPTION mapping
@@ -358,8 +379,8 @@ class UPCC_Subscriber(object):
                 for instance in self.attrs['QUOTA']:
                     
                     # if subs is master the store imsi in hash sid-imsi
-                    if instance['QUOTANAME'].startswith(master_quota_prefix) and self.profile[upcc2profile_mappings['STATION']] == upcc_STATION_mapping['1'] :
-                        SID_IMSI[self.profile[upcc2profile_mappings['SID']]] = self.profile[upcc2profile_mappings['SUBSCRIBERIDENTIFIER']] 
+#                    if instance['QUOTANAME'].startswith(master_quota_prefix) and self.profile[upcc2profile_mappings['STATION']] == upcc_STATION_mapping['1'] :
+#                        SID_IMSI[self.profile[upcc2profile_mappings['SID']]] = self.profile[upcc2profile_mappings['SUBSCRIBERIDENTIFIER']]
                     
                     # define new dict and transfer there fields from self.attrs 
                     quota, dyn_quota = dict(), dict() 
@@ -407,7 +428,7 @@ class UPCC_Subscriber(object):
                         dyn_quota['VOLUME'] *= quota_mult
                         self.dyn_quota.append(dyn_quota)  
         
-        return
+        return True
     
     def generate_quota(self,quota,template_quota=None,template_quota_usage=None):
         '''
@@ -542,6 +563,8 @@ USAGE
 
         parser.add_argument("-o", "--output", dest="output_dir", help="output directory [default: %(default)s]", default=default_output_dir)
         
+        parser.add_argument("-t", "--test", dest="test", action="count", help="test import, without writing output result [default: %(default)s]", default=0)
+        
 #        parser.add_argument(dest="paths", action='append', help="paths to folder(s) with source file(s) [default: %(default)s]", metavar="path", nargs='*', default=import_dir)
         parser.add_argument(dest="paths", help="paths to folder(s) with source file(s) [default: %(default)s]", metavar="path", nargs='*', default=import_dir)
 
@@ -555,6 +578,7 @@ USAGE
         inpat = args.include
         expat = args.exclude
         format = args.format
+        test = args.test
         
         output_dir = args.output_dir
         
@@ -584,12 +608,17 @@ USAGE
         logger.info('Application started')
         logger.info('Logging output to: %s',logFilePath)
         
+        if test:
+            logger.info('TEST run, without writing result')
+        else:
+            logger.info('Output to: %s',output_dir)
+        
         if verbose > 0:
-            print("Verbose mode on")
+            logger.info("Verbose mode on")
             if recurse:
-                print("Recursive mode on")
+                logger.info("Recursive mode on")
             else:
-                print("Recursive mode off")
+                logger.info("Recursive mode off")
 
         if inpat and expat and inpat == expat:
             raise CLIError("include and exclude pattern are equal! Nothing will be processed.")
@@ -599,6 +628,8 @@ USAGE
         f_out = None
         
         time_start = previous_time = time.time()
+
+        timestamp = int(time.time()*timestamp_precision)
         
         for inpath in paths:
             ### do something with inpath ###
@@ -660,15 +691,21 @@ USAGE
         
                                     # create new file on each chunk_size, starting from 0
                                     if export_records_count%default_chunk_size == 0:
+                                        
+                                        if export_records_count > 0:
+                                            logger.info("%s records processed: %s",str(default_chunk_size), str(timedelta(seconds=time.time() - int(timestamp / timestamp_precision))))
+                                            logger.info("records per second: %s",str(int(default_chunk_size / (time.time() - int(timestamp / timestamp_precision)))))
+                                        
                                         timestamp = int(time.time()*timestamp_precision)
                                         logger.info("new chunk on: "+str(export_records_count)+" : "+filename_prefix+str(timestamp)+filename_suffix)
                                         
                                         # in case new chunk close old file...
-                                        if export_records_count>1:
+                                        if export_records_count>1 and not test:
                                             f_out.close()
                                         
+                                        if not test:
                                         # and start a new one
-                                        f_out = gzip.open(output_dir+filename_prefix+str(timestamp)+filename_suffix, 'at')
+                                            f_out = gzip.open(output_dir+filename_prefix+str(timestamp)+filename_suffix, 'at')
                                     
                                     if len(subscriber_rows)>0:
                                     
@@ -686,24 +723,25 @@ USAGE
                                             logger.debug(json.dumps(subs.attrs, indent=2, default=str))
                                         
                                         # Transform
-                                        subs.mapping()
+                                        if subs.mapping() :
             
-                                        # Load
-                                        # xml_template_begin_transact + xml_profile + xml_quota + xml_dyn_quota + xml_template_end_transact
-                                        xml_result = xml_template_begin_transact
-                                        
-            #                                xml_result += subs.export_profile(xml_template['create_subs'],xml_template['create_quota'],xml_template['quota_usage'],xml_template['create_dquota'],xml_template['topup_quota'])
-                                        xml_result += subs.export_profile(xml_template['create_subs'])
-                                        
-                                        xml_result += subs.export_quota(subs.quota, xml_template['create_quota'], xml_template['quota_usage'])
-                                        xml_result += subs.export_quota(subs.dyn_quota, xml_template['create_dquota'], xml_template['topup_quota'])
-                                        
-                                        xml_result += xml_template_end_transact
-                                        #xml_result =subs.export(xml_template['create_subs'])
-                                        if verbose>0: 
-                                            logger.debug (xml_result)
-            
-                                        f_out.write("%s\n" % xml_result)
+                                            # Load
+                                            # xml_template_begin_transact + xml_profile + xml_quota + xml_dyn_quota + xml_template_end_transact
+                                            xml_result = xml_template_begin_transact
+                                            
+                #                                xml_result += subs.export_profile(xml_template['create_subs'],xml_template['create_quota'],xml_template['quota_usage'],xml_template['create_dquota'],xml_template['topup_quota'])
+                                            xml_result += subs.export_profile(xml_template['create_subs'])
+                                            
+                                            xml_result += subs.export_quota(subs.quota, xml_template['create_quota'], xml_template['quota_usage'])
+                                            xml_result += subs.export_quota(subs.dyn_quota, xml_template['create_dquota'], xml_template['topup_quota'])
+                                            
+                                            xml_result += xml_template_end_transact
+                                            #xml_result =subs.export(xml_template['create_subs'])
+                                            if verbose>0: 
+                                                logger.debug (xml_result)
+                
+                                            if not test:
+                                                f_out.write("%s\n" % xml_result)
                                 
                                 # wait for next subs record
                                 subscriber_begin=False
@@ -713,6 +751,7 @@ USAGE
             #                            print("loaded elements: "+str(subs.elements()))
 
         logger.info("Total records: "+str(export_records_count))
+        logger.info("SID_IMSI records: "+str(len(SID_IMSI)))
         logger.info("Execution time: " + str(timedelta(seconds=time.time() - time_start)))
         logger.info("Total errors: %s check log file at %s",str(errors_count),logFilePath)
         return 0

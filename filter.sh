@@ -32,14 +32,14 @@ do
 
 	time zcat $INPUT | sed ':a;N;$!ba;s/;\n/;/g;s/<SUBEND//g'  |grep SID= | gzip >$OUTPUT
     
-    echo generating $SLAVE
+	echo generating $SLAVE
 	zcat $OUTPUT | grep STATION=2 | gzip >$SLAVE &
 	PID=$!
 		
 	echo generating $MASTER
 	time zcat $OUTPUT | grep STATION=1 | gzip >$MASTER
 
-    wait $PID
+	wait $PID
 
 	rm $OUTPUT
 	
