@@ -145,7 +145,7 @@ xml_template_create_pool="""
 <txRequest id="1">
 <createPool>
 <key>
-<PoolID>{IMSI}</PoolID>
+<PoolID>{MASTER}</PoolID>
 </key>
 <entity>
 <data>
@@ -155,7 +155,7 @@ xml_template_create_pool="""
 <content>
 <![CDATA[
 <pool>
-<field name="PoolID">{IMSI}</field>
+<field name="PoolID">{MASTER}</field>
 {ENTITLEMENT}
 </pool>
 ]]>

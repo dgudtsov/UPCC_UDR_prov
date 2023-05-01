@@ -862,6 +862,8 @@ USAGE
                                                 pool = Pool()
                                                 pool.mapping(subs)
                                                 
+                                                IMSI_Pool[subs.get_master()] = "1"
+                                                
                                                 # create pool and add master as first member
                                                 xml_result += pool.export_profile(xml_template['create_pool'])
                                                 xml_result += pool.export_quota(subs.quota, xml_template['pool_quota'], xml_template['quota_usage'])
@@ -872,6 +874,11 @@ USAGE
                                                 #pool = Pool(subs.get_master())
                                                 pool = Pool()
                                                 pool.mapping(subs)
+                                                
+                                                # todo: check if pool has not been created for master, then create it from slave
+                                                
+                                                if subs.get_master() not in IMSI_Pool:
+                                                    xml_result += pool.export_profile(xml_template['create_pool'])
                                                 
                                                 xml_result += pool.export_profile(xml_template['pool_member'])
 
