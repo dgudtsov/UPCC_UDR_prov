@@ -603,15 +603,11 @@ class Pool(UPCC_Subscriber):
         
         self.profile[upcc2profile_mappings['STATION']] = subs.get_master()
         
-        # quota
-        for quota in subs.quota:
-            if quota['QUOTA'].startswith(quota_prefix+master_quota_prefix):
-                self.quota.append(quota)
+        # quota from subs to pool
+        self.quota = [ quota for quota in subs.quota if quota['QUOTA'].startswith(quota_prefix+master_quota_prefix) ]
         
-        # dynquota
-        for dyn_quota in subs.dyn_quota:
-            if dyn_quota['QUOTA'].startswith(quota_prefix+master_quota_prefix):
-                self.dyn_quota.append(dyn_quota)
+        # dynquota from subs to pool
+        self.dyn_quota = [ dyn_quota for dyn_quota in subs.dyn_quota if dyn_quota['QUOTA'].startswith(quota_prefix+master_quota_prefix)]
         
         # if master
 #        if subs.profile[upcc2profile_mappings['STATION']] in list(upcc_STATION_mapping.values()):
