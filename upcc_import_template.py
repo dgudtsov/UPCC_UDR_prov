@@ -126,6 +126,98 @@ xml_template_delete_subs="""
 </deleteSubscriber>
 """.replace("\n", "")
 
+xml_template_pool_add_member="""
+<txRequest id="1">
+<addPoolMember>
+<key>
+<PoolID>{MASTER}</PoolID>
+</key>
+<members>
+<member>
+<IMSI>{IMSI}</IMSI>
+</member>
+</members>
+</addPoolMember>
+</txRequest>
+""".replace("\n", "")
+
+xml_template_create_pool="""
+<txRequest id="1">
+<createPool>
+<key>
+<PoolID>{IMSI}</PoolID>
+</key>
+<entity>
+<data>
+<name>Pool</name>
+<interface>XMLIMPORT</interface>
+</data>
+<content>
+<![CDATA[
+<pool>
+<field name="PoolID">{IMSI}</field>
+{ENTITLEMENT}
+</pool>
+]]>
+</content>
+</entity>
+</createPool>
+</txRequest>
+""".replace("\n", "") 
+#+ xml_template_pool_add_member.replace("{MASTER}", "{IMSI}") 
+
+xml_template_pool_quota="""
+<txRequest id="1">
+<create createEntityIfNotExist="true">
+<key>
+<PoolID>{IMSI}</PoolID>
+</key>
+<entity>
+<data>
+<name>Quota</name>
+<interface>XMLIMPORT</interface>
+<xpath/>
+</data>
+<content>
+<![CDATA[<?xml version="1.0" encoding="UTF-8"?>
+<usage>
+<version>3</version>
+{QUOTA}
+</usage>
+]]>
+</content>
+</entity>
+</create>
+</txRequest>
+""".replace("\n", "")
+
+# Dynamic Quota definition
+xml_template_pool_dyn_quota="""
+<txRequest id="1">
+<create createEntityIfNotExist="true">
+<key>
+<PoolID>{IMSI}</PoolID>
+</key>
+<entity>
+<data>
+<name>DynamicQuota</name>
+<interface>XMLIMPORT</interface>
+<xpath/>
+</data>
+<content>
+<![CDATA[<?xml version="1.0" encoding="UTF-8"?>
+
+<Definition>
+<version>1</version>
+{QUOTA}
+</Definition>
+]]>
+</content>
+</entity>
+</create>
+</txRequest>
+""".replace("\n", "")
+
 xml_template_replace_subs="<transaction><txRequest id=\"1\">"+xml_template_delete_subs+"</txRequest><txRequest id=\"2\">"+xml_template_subs+"</txRequest></transaction>"
 
 xml_template=dict()
@@ -138,4 +230,10 @@ xml_template = {
     ,'quota_usage' : xml_template_quota_usage
     ,'topup_quota' : xml_template_quota_topup
     ,'replace_subs': xml_template_replace_subs
+    
+    ,'create_pool' : xml_template_create_pool
+    ,'pool_member' : xml_template_pool_add_member
+    ,'pool_quota' : xml_template_pool_quota
+    ,'pool_dquota' : xml_template_pool_dyn_quota
+    
     }

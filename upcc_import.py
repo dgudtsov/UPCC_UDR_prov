@@ -66,6 +66,8 @@ default_output_dir='./output/'
 filename_prefix='i_'
 filename_suffix='.ixml.gz'
 
+filename_prefix_pool='i_pool_'
+
 export_result = 'export.csv.gz'
 
 #logging
@@ -134,6 +136,11 @@ SID_IMSI = {
 #    'SID' : 'IMSI'
     }
 
+# hash to map master IMSI to pool
+IMSI_Pool = {
+# 'IMSI' : Pool object    
+    }
+
 #master quota prefix
 master_quota_prefix='CLONE-'
 
@@ -169,6 +176,8 @@ class UPCC_Subscriber(object):
         self.profile=dict()
         
         self.logger = logging.getLogger(__name__)
+        
+        self.__is_master__=False
 
 
 #        subscriber_begin=False
@@ -241,6 +250,40 @@ class UPCC_Subscriber(object):
     # return number of records for attributes
     def elements(self):
         return len(self.attrs.keys())
+    
+    def has_master(self):
+        '''
+        Returns True if subs is slave and master is found
+        Returns False if subs is slave and master is NOT found
+        Returns False if subs is Master
+        '''
+        
+        # if mapping to imsi is not done, i.e. still value of Master or Slave
+        if self.profile[upcc2profile_mappings['STATION']] in list(upcc_STATION_mapping.values()):
+            return False
+        else:
+            return True
+        
+        # default
+        return False
+    
+    def is_master(self):
+        '''
+        Returns True if this subscriber is master and has one of 'Clone-*' quotas defined
+        '''
+        return self.__is_master__
+    
+    def get_master(self):
+        '''
+        Returns IMSI of Master
+        '''
+    
+        # if Master
+        if self.profile[upcc2profile_mappings['STATION']] == upcc_STATION_mapping['1']:
+            return self.profile['IMSI']
+        
+        # if Slave
+        return self.profile[upcc2profile_mappings['STATION']]
     
     def mapping(self):
         '''
@@ -381,6 +424,10 @@ class UPCC_Subscriber(object):
                     # if subs is master the store imsi in hash sid-imsi
 #                    if instance['QUOTANAME'].startswith(master_quota_prefix) and self.profile[upcc2profile_mappings['STATION']] == upcc_STATION_mapping['1'] :
 #                        SID_IMSI[self.profile[upcc2profile_mappings['SID']]] = self.profile[upcc2profile_mappings['SUBSCRIBERIDENTIFIER']]
+
+                    if instance['QUOTANAME'].startswith(master_quota_prefix) and self.profile[upcc2profile_mappings['STATION']] == upcc_STATION_mapping['1'] :
+                        self.__is_master__ = True
+#                    if instance['QUOTANAME'].startswith(master_quota_prefix): self.__is_master__ = True
                     
                     # define new dict and transfer there fields from self.attrs 
                     quota, dyn_quota = dict(), dict() 
@@ -482,11 +529,14 @@ class UPCC_Subscriber(object):
             xml_ent_result="".join([xml_template_entitlement.format(Entitlement=ent) for ent in self.profile[upcc_SUBSCRIPTION_mapping['SERVICENAME']] ])
         
         try:
-            xml_profile = template_profile.format(MSISDN = self.profile['MSISDN'],
-                                      IMSI = self.profile['IMSI'],
-                                      BillingDay = self.profile['BillingDay'],
-                                      ENTITLEMENT = xml_ent_result,
-                                      CUSTOM = xml_custom_result )
+            xml_profile = template_profile.format(
+                                    MSISDN = self.profile['MSISDN'],
+                                    IMSI = self.profile['IMSI'],
+                                    BillingDay = self.profile['BillingDay'],
+                                    ENTITLEMENT = xml_ent_result,
+                                    CUSTOM = xml_custom_result,
+                                    MASTER = self.profile[upcc2profile_mappings['STATION']]
+                                    )
         except:
             self.logger.error('Key error for profile, SID=%s', self.profile[upcc2profile_mappings['SID']])
             self.logger.debug('Profile: %s', json.dumps(self.profile, indent=2, default=str))
@@ -510,6 +560,80 @@ class UPCC_Subscriber(object):
         #
         # # concat profile with quotas
         # return xml_template_begin_transact + xml_profile + xml_quota + xml_dyn_quota + xml_template_end_transact
+
+
+class Pool(UPCC_Subscriber):
+#    def __init__(self, master):
+    def __init__(self):
+        '''
+        Create new pool class
+#        Input: imsi of master subscriber
+        '''
+
+        # stores mapped quota parameters         
+        self.quota = list()
+
+        # top-up modifiers
+        self.dyn_quota = list()
+
+        # stores mapped udr profile
+        self.profile=dict()
+        
+#        # assign IMSI of master to Pool ID
+        self.profile['IMSI'] = ""
+        self.profile['MSISDN'] = ""
+        self.profile['BillingDay'] = 0
+        
+        
+        self.logger = logging.getLogger(__name__)
+        
+        pass
+    
+    def mapping(self, subs):
+
+        # store to Entitlement only items with Clone-* prefix        
+        self.profile[upcc_SUBSCRIPTION_mapping['SERVICENAME']] = list()
+        self.profile[upcc_SUBSCRIPTION_mapping['SERVICENAME']] = [ ent for ent in subs.profile[upcc_SUBSCRIPTION_mapping['SERVICENAME']] if master_quota_prefix in ent]
+        
+        # just to keep continuance
+        self.profile[upcc2profile_mappings['SID']] = subs.profile[upcc2profile_mappings['SID']]
+        
+        
+        self.profile['IMSI'] = subs.profile['IMSI']
+        
+        self.profile[upcc2profile_mappings['STATION']] = subs.get_master()
+        
+        # quota
+        for quota in subs.quota:
+            if quota['QUOTA'].startswith(quota_prefix+master_quota_prefix):
+                self.quota.append(quota)
+        
+        # dynquota
+        for dyn_quota in subs.dyn_quota:
+            if dyn_quota['QUOTA'].startswith(quota_prefix+master_quota_prefix):
+                self.dyn_quota.append(dyn_quota)
+        
+        # if master
+#        if subs.profile[upcc2profile_mappings['STATION']] in list(upcc_STATION_mapping.values()):
+#            self.profile[upcc2profile_mappings['STATION']] = subs.profile['IMSI'] 
+        
+#        xml_ent_result="".join([ ent for ent in subs.profile[upcc_SUBSCRIPTION_mapping['SERVICENAME']] if master_quota_prefix in ent])
+        
+#        print (xml_ent_result)
+        
+        return
+    
+    def add_slave(self,subscriber):
+        '''
+        Add slave subscriber into pool
+        Input: UPCC_Subscriber instance of class
+        '''
+        
+        # add CLONE-* subscription to pool
+        
+        # add CLONE-* quota to pool
+        
+        pass
 
 class CLIError(Exception):
     '''Generic exception to raise and log different fatal errors.'''
@@ -735,6 +859,28 @@ USAGE
                                             xml_result += subs.export_quota(subs.quota, xml_template['create_quota'], xml_template['quota_usage'])
                                             xml_result += subs.export_quota(subs.dyn_quota, xml_template['create_dquota'], xml_template['topup_quota'])
                                             
+                                            # if subs is master, then create pool
+                                            if subs.is_master():
+                                                
+                                                #pool = Pool(subs.get_master())
+                                                pool = Pool()
+                                                pool.mapping(subs)
+                                                
+                                                # create pool and add master as first member
+                                                xml_result += pool.export_profile(xml_template['create_pool'])
+                                                xml_result += pool.export_quota(subs.quota, xml_template['pool_quota'], xml_template['quota_usage'])
+                                                xml_result += pool.export_quota(subs.dyn_quota, xml_template['pool_dquota'], xml_template['topup_quota'])
+                                            
+                                            # if subs is slave, add him into pool
+                                            elif subs.has_master():
+                                                #pool = Pool(subs.get_master())
+                                                pool = Pool()
+                                                pool.mapping(subs)
+                                                
+                                                xml_result += pool.export_profile(xml_template['pool_member'])
+
+                                                # todo: pool member quota usage ?
+                                            
                                             xml_result += xml_template_end_transact
                                             #xml_result =subs.export(xml_template['create_subs'])
                                             if verbose>0: 
@@ -742,6 +888,17 @@ USAGE
                 
                                             if not test:
                                                 f_out.write("%s\n" % xml_result)
+                                                
+                                            # # Pool
+                                            # if subs.has_master():
+                                            #     master_imsi = subs.get_master()
+                                            #
+                                            #     if master_imsi not in IMSI_Pool:
+                                            #         IMSI_Pool[master_imsi] = Pool(subs.get_master())
+                                            #
+                                            #     pool = IMSI_Pool[master_imsi]
+                                            #
+                                            #     pool.add_slave(subs)
                                 
                                 # wait for next subs record
                                 subscriber_begin=False
@@ -750,6 +907,33 @@ USAGE
                                 
             #                            print("loaded elements: "+str(subs.elements()))
 
+        # logger.info("Dumping pools, records: "+str(len(IMSI_Pool)))
+        #
+        # timestamp = int(time.time()*timestamp_precision)
+        # logger.info("pool dumping to: "+filename_prefix+str(timestamp)+filename_suffix)
+        #
+        # if not test:
+        # # and start a new one
+        #     f_pool = gzip.open(output_dir+filename_prefix_pool+str(timestamp)+filename_suffix, 'at')
+        #
+        # for imsi,p in enumerate(IMSI_Pool):
+        #     logger.debug("Pool Master IMSI: "+str(imsi))
+        #
+        #     xml_result = xml_template_begin_transact
+        #
+        #     xml_result = p.export(xml_template['create_pool'])
+        #
+        #     xml_result += xml_template_end_transact
+        #
+        #     if verbose>0: 
+        #         logger.debug (xml_result)
+        #
+        #     if not test:
+        #         f_pool.write("%s\n" % xml_result)
+        #
+        # if not test:
+        #     f_pool.close()
+        
         logger.info("Total records: "+str(export_records_count))
         logger.info("SID_IMSI records: "+str(len(SID_IMSI)))
         logger.info("Execution time: " + str(timedelta(seconds=time.time() - time_start)))
