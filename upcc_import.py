@@ -1,17 +1,17 @@
 #!/usr/local/bin/python3
 # encoding: utf-8
 '''
-upcc_import -- shortdesc
+upcc_import -- converter from Huawei UPCC export files into Oracle UDR bulk import file
 
 upcc_import is a description
 
 It defines classes_and_methods
 
-@author:     user_name
+@author:     Denis Gudtsov
 
-@copyright:  2023 organization_name. All rights reserved.
+@copyright:  2023 Jet Infosystems. All rights reserved.
 
-@license:    license
+@license:    Apache
 
 @contact:    user_email
 @deffield    updated: Updated
@@ -21,6 +21,8 @@ import sys
 import os
 import time
 import gzip
+
+import pickle
 
 import logging
 from logging import StreamHandler, Formatter, FileHandler, handlers
@@ -40,9 +42,9 @@ from upcc_servicequota import servicequota
 from asyncio.log import logger
 
 __all__ = []
-__version__ = 0.1
+__version__ = 0.5
 __date__ = '2023-01-05'
-__updated__ = '2023-02-18'
+__updated__ = '2023-05-02'
 
 DEBUG = 0
 TESTRUN = 0
@@ -74,6 +76,11 @@ export_result = 'export.csv.gz'
 logFilePath = "./log/export.log"
 maxBytes=50000000 
 backupCount=10
+
+# persistent storage
+stor_sid_imsi="./persistent/sid_imsi"
+
+stor_imsi_pool="./persistent/imsi_pool"
 
 #=== Constants
 fields_names={
@@ -136,10 +143,11 @@ SID_IMSI = {
 #    'SID' : 'IMSI'
     }
 
-# hash to map master IMSI to pool
-IMSI_Pool = {
+# list to map master IMSI to pool
+IMSI_Pool = list()
+#IMSI_Pool = {
 # 'IMSI' : Pool object    
-    }
+#    }
 
 #master quota prefix
 master_quota_prefix='CLONE-'
@@ -152,6 +160,12 @@ quota_mult = 1000
 
 # global errors counter
 errors_count = 0
+
+# counters
+MSISDN_min=77999999999
+MSISDN_max=0
+IMSI_min=401779999999999
+IMSI_max=0
 
 #=== Code
 
@@ -253,8 +267,8 @@ class UPCC_Subscriber(object):
     
     def has_master(self):
         '''
-        Returns True if subs is slave and master is found
-        Returns False if subs is slave and master is NOT found
+        Returns True if subs is slave and master is found (IMSI is known)
+        Returns False if subs is slave and master is NOT found (IMSI is unknown)
         Returns False if subs is Master
         '''
         
@@ -269,7 +283,7 @@ class UPCC_Subscriber(object):
     
     def is_master(self):
         '''
-        Returns True if this subscriber is master and has one of 'Clone-*' quotas defined
+        Returns True if this subscriber is master and has one of 'Clone-*' quotas is defined OR subscription with 'Clone-*' is defined  
         '''
         return self.__is_master__
     
@@ -375,6 +389,10 @@ class UPCC_Subscriber(object):
                 for subscription in self.attrs['SUBSCRIPTION']:
                     # mapping service to entitlement
                     self.profile[upcc_SUBSCRIPTION_mapping['SERVICENAME']].append(subscription['SERVICENAME'])
+                    
+                    # as subscriber has SUBSCRIPTION=CLONE-* then assign them master marker
+                    if subscription['SERVICENAME'].startswith(master_quota_prefix) and self.profile[upcc2profile_mappings['STATION']] == upcc_STATION_mapping['1'] :
+                        self.__is_master__ = True
                     
                     #SRVSTATUS = 1 (Frozen)
                     if 'SRVSTATUS' in subscription:
@@ -498,6 +516,7 @@ class UPCC_Subscriber(object):
             
             xml_quota = template_quota.format( #REQ = i,
                                   IMSI = self.profile['IMSI'],
+                                  MASTER = self.profile[upcc2profile_mappings['STATION']],
                                   QUOTA = xml_quota_usage
                                   )
         return xml_quota
@@ -579,6 +598,9 @@ class Pool(UPCC_Subscriber):
         # stores mapped udr profile
         self.profile=dict()
         
+        # Entitlements
+        self.profile[upcc_SUBSCRIPTION_mapping['SERVICENAME']] = list()
+        
 #        # assign IMSI of master to Pool ID
         self.profile['IMSI'] = ""
         self.profile['MSISDN'] = ""
@@ -591,9 +613,16 @@ class Pool(UPCC_Subscriber):
     
     def mapping(self, subs):
 
+    ### Transfer values from Subscriber profile to Pool profile with Clone-* prefix
         # store to Entitlement only items with Clone-* prefix        
-        self.profile[upcc_SUBSCRIPTION_mapping['SERVICENAME']] = list()
         self.profile[upcc_SUBSCRIPTION_mapping['SERVICENAME']] = [ ent for ent in subs.profile[upcc_SUBSCRIPTION_mapping['SERVICENAME']] if master_quota_prefix in ent]
+
+        # quota from subs to pool
+        self.quota = [ quota for quota in subs.quota if quota['QUOTA'].startswith(quota_prefix+master_quota_prefix) ]
+        
+        # dynquota from subs to pool
+        self.dyn_quota = [ dyn_quota for dyn_quota in subs.dyn_quota if dyn_quota['QUOTA'].startswith(quota_prefix+master_quota_prefix)]
+    ###
         
         # just to keep continuance
         self.profile[upcc2profile_mappings['SID']] = subs.profile[upcc2profile_mappings['SID']]
@@ -603,11 +632,6 @@ class Pool(UPCC_Subscriber):
         
         self.profile[upcc2profile_mappings['STATION']] = subs.get_master()
         
-        # quota from subs to pool
-        self.quota = [ quota for quota in subs.quota if quota['QUOTA'].startswith(quota_prefix+master_quota_prefix) ]
-        
-        # dynquota from subs to pool
-        self.dyn_quota = [ dyn_quota for dyn_quota in subs.dyn_quota if dyn_quota['QUOTA'].startswith(quota_prefix+master_quota_prefix)]
         
         # if master
 #        if subs.profile[upcc2profile_mappings['STATION']] in list(upcc_STATION_mapping.values()):
@@ -646,6 +670,14 @@ def main(argv=None): # IGNORE:C0111
 
     global errors_count
     
+    global SID_IMSI
+    global IMSI_Pool
+    
+    global MSISDN_min
+    global MSISDN_max
+    global IMSI_min
+    global IMSI_max
+    
     if argv is None:
         argv = sys.argv
     else:
@@ -658,8 +690,8 @@ def main(argv=None): # IGNORE:C0111
     program_shortdesc = __import__('__main__').__doc__.split("\n")[1]
     program_license = '''%s
 
-  Created by user_name on %s.
-  Copyright 2023 organization_name. All rights reserved.
+  Created by Denis Gudtsov on %s.
+  Copyright 2023 Jet Infosystems. All rights reserved.
 
   Licensed under the Apache License 2.0
   http://www.apache.org/licenses/LICENSE-2.0
@@ -673,17 +705,19 @@ USAGE
     try:
         # Setup argument parser
         parser = ArgumentParser(description=program_license, formatter_class=RawDescriptionHelpFormatter)
-        parser.add_argument("-r", "--recursive", dest="recurse", action="store_true", help="recurse into subfolders [default: %(default)s]")
+        # parser.add_argument("-r", "--recursive", dest="recurse", action="store_true", help="recurse into subfolders [default: %(default)s]")
         parser.add_argument("-v", "--verbose", dest="verbose", action="count", help="set verbosity level [default: %(default)s]", default=0)
-        parser.add_argument("-i", "--include", dest="include", help="only include paths matching this regex pattern. Note: exclude is given preference over include. [default: %(default)s]", metavar="RE" )
-        parser.add_argument("-e", "--exclude", dest="exclude", help="exclude paths matching this regex pattern. [default: %(default)s]", metavar="RE" )
+        # parser.add_argument("-i", "--include", dest="include", help="only include paths matching this regex pattern. Note: exclude is given preference over include. [default: %(default)s]", metavar="RE" )
+        # parser.add_argument("-e", "--exclude", dest="exclude", help="exclude paths matching this regex pattern. [default: %(default)s]", metavar="RE" )
         parser.add_argument('-V', '--version', action='version', version=program_version_message)
         
         parser.add_argument("-f", "--format", dest="format", required=False, choices=['csv','raw'], help="format: csv or raw, [default: %(default)s]", default='csv')
+        
+        parser.add_argument("-a", "--action", dest="action", required=False, choices=['create','delete'], help="action: create or delete, [default: %(default)s]", default='create')
 
         parser.add_argument("-o", "--output", dest="output_dir", help="output directory [default: %(default)s]", default=default_output_dir)
         
-        parser.add_argument("-t", "--test", dest="test", action="count", help="test import, without writing output result [default: %(default)s]", default=0)
+        parser.add_argument("-t", "--test", dest="test", action="count", help="test import, without writing output result [default: %(default)s]", default=None)
         
 #        parser.add_argument(dest="paths", action='append', help="paths to folder(s) with source file(s) [default: %(default)s]", metavar="path", nargs='*', default=import_dir)
         parser.add_argument(dest="paths", help="paths to folder(s) with source file(s) [default: %(default)s]", metavar="path", nargs='*', default=import_dir)
@@ -694,18 +728,22 @@ USAGE
         paths = args.paths            
         
         verbose = args.verbose
-        recurse = args.recurse
-        inpat = args.include
-        expat = args.exclude
+        # recurse = args.recurse
+        # inpat = args.include
+        # expat = args.exclude
         format = args.format
         test = args.test
+        action = args.action
         
         output_dir = args.output_dir
         
         logger = logging.getLogger(__name__)
         logger.setLevel(logging.DEBUG)
         
-        formatter = logging.Formatter('[%(asctime)s: %(levelname)s] %(message)s')
+        if test:
+            formatter = logging.Formatter('[%(asctime)s :TEST-RUN: %(levelname)s] %(message)s')
+        else:
+            formatter = logging.Formatter('[%(asctime)s: %(levelname)s] %(message)s')
         
         #console
         handler = StreamHandler(stream=sys.stdout)
@@ -733,15 +771,24 @@ USAGE
         else:
             logger.info('Output to: %s',output_dir)
         
+        logger.info('Loading persistent SID_IMSI from: %s', stor_sid_imsi)
+#        logger.info('Loading persistent from: %s', stor_imsi_pool)
+        
+        try:
+            with gzip.open(stor_sid_imsi + '.pickle', 'rb') as f:
+                SID_IMSI = pickle.load(f)
+        except:
+            logger.info('file is not found')
+        
         if verbose > 0:
             logger.info("Verbose mode on")
-            if recurse:
-                logger.info("Recursive mode on")
-            else:
-                logger.info("Recursive mode off")
+            # if recurse:
+            #     logger.info("Recursive mode on")
+            # else:
+            #     logger.info("Recursive mode off")
 
-        if inpat and expat and inpat == expat:
-            raise CLIError("include and exclude pattern are equal! Nothing will be processed.")
+        # if inpat and expat and inpat == expat:
+        #     raise CLIError("include and exclude pattern are equal! Nothing will be processed.")
 
         export_records_count = 0
         
@@ -750,6 +797,10 @@ USAGE
         time_start = previous_time = time.time()
 
         timestamp = int(time.time()*timestamp_precision)
+        
+        logger.info("pool dumping to: "+filename_prefix_pool+str(timestamp)+filename_suffix)
+        if not test:
+            f_pool = gzip.open(output_dir+filename_prefix_pool+str(timestamp)+filename_suffix, 'at')
         
         for inpath in paths:
             ### do something with inpath ###
@@ -844,16 +895,28 @@ USAGE
                                         
                                         # Transform
                                         if subs.mapping() :
+                                            
+                                            if int(subs.profile['IMSI']) > IMSI_max: IMSI_max = int(subs.profile['IMSI'])  
+                                            if int(subs.profile['IMSI']) < IMSI_min: IMSI_min = int(subs.profile['IMSI'])
+                                        
+                                            if int(subs.profile['MSISDN']) > MSISDN_max: MSISDN_max = int(subs.profile['MSISDN'])  
+                                            if int(subs.profile['MSISDN']) < MSISDN_min: MSISDN_min = int(subs.profile['MSISDN'])
             
                                             # Load
                                             # xml_template_begin_transact + xml_profile + xml_quota + xml_dyn_quota + xml_template_end_transact
                                             xml_result = xml_template_begin_transact
+                                            xml_result_pool = ""
                                             
                 #                                xml_result += subs.export_profile(xml_template['create_subs'],xml_template['create_quota'],xml_template['quota_usage'],xml_template['create_dquota'],xml_template['topup_quota'])
-                                            xml_result += subs.export_profile(xml_template['create_subs'])
                                             
-                                            xml_result += subs.export_quota(subs.quota, xml_template['create_quota'], xml_template['quota_usage'])
-                                            xml_result += subs.export_quota(subs.dyn_quota, xml_template['create_dquota'], xml_template['topup_quota'])
+                                            if action == 'delete':
+                                                xml_result += subs.export_profile(xml_template['delete_subs'])
+                                            else:
+                                            
+                                                xml_result += subs.export_profile(xml_template['create_subs'])
+# TODO: remove quota with clone- prefix                                             
+                                                xml_result += subs.export_quota(subs.quota, xml_template['create_quota'], xml_template['quota_usage'])
+                                                xml_result += subs.export_quota(subs.dyn_quota, xml_template['create_dquota'], xml_template['topup_quota'])
                                             
                                             # if subs is master, then create pool
                                             if subs.is_master():
@@ -862,35 +925,77 @@ USAGE
                                                 pool = Pool()
                                                 pool.mapping(subs)
                                                 
-                                                IMSI_Pool[subs.get_master()] = "1"
+                                                #IMSI_Pool[subs.get_master()] = "1"
+                                                IMSI_Pool.append(subs.get_master())
                                                 
-                                                # create pool and add master as first member
-                                                xml_result += pool.export_profile(xml_template['create_pool'])
-                                                xml_result += pool.export_quota(subs.quota, xml_template['pool_quota'], xml_template['quota_usage'])
-                                                xml_result += pool.export_quota(subs.dyn_quota, xml_template['pool_dquota'], xml_template['topup_quota'])
-                                            
+                                                if action == 'create':
+                                                    
+                                                    xml_result_pool = xml_template_begin_transact
+                                                    
+                                                    # create pool and add master as first member
+                                                    xml_result_pool += pool.export_profile(xml_template['create_pool'])
+                                                    
+                                                    xml_result += pool.export_profile(xml_template['pool_member_master'])
+                                                    
+                                                    xml_result_pool += pool.export_quota(pool.quota, xml_template['pool_quota'], xml_template['quota_usage'])
+                                                    xml_result_pool += pool.export_quota(pool.dyn_quota, xml_template['pool_dquota'], xml_template['topup_quota'])
+                                                
+                                                    xml_result_pool += xml_template_end_transact
+                                                
                                             # if subs is slave, add him into pool
                                             elif subs.has_master():
                                                 #pool = Pool(subs.get_master())
                                                 pool = Pool()
                                                 pool.mapping(subs)
                                                 
-                                                # todo: check if pool has not been created for master, then create it from slave
+                                                # check if pool has not been created for master, then create it from slave
+                                                # the only issue is: slave doesn't has SUBSCRIPTION=CLONE-*
                                                 
                                                 if subs.get_master() not in IMSI_Pool:
-                                                    xml_result += pool.export_profile(xml_template['create_pool'])
-                                                
-                                                xml_result += pool.export_profile(xml_template['pool_member'])
+                                                    logger.warning("Creating Pool from Slave SID = %s ", str(subs.profile[upcc2profile_mappings['SID']]))
 
-                                                # todo: pool member quota usage ?
+                                                    xml_result_pool = xml_template_begin_transact
+
+                                                    if action == 'delete':
+                                                        xml_result_pool += pool.export_profile(xml_template['delete_pool'])
+                                                    else:                                                    
+                                                        # create pool and add master as first member
+                                                        xml_result_pool += pool.export_profile(xml_template['create_pool'])
+                                                        
+                                                        xml_result += pool.export_profile(xml_template['pool_member_master'])
+                                                        
+                                                        #IMSI_Pool[subs.get_master()] = "1"
+                                                        IMSI_Pool.append(subs.get_master())
+                                                        
+                                                    xml_result_pool += xml_template_end_transact
+                                                
+                                                if action == 'create':
+                                                    xml_result += pool.export_profile(xml_template['pool_member'])
+                                                    
+                                                    # virtual quotas on slave, QUOTAFLAG = 1
+                                                    # # Pool Quota modifiers from slaves ?
+                                                    # pool_quota = ""
+                                                    # pool_quota += pool.export_quota(pool.quota, xml_template['pool_quota'], xml_template['quota_usage'])
+                                                    # pool_quota += pool.export_quota(pool.dyn_quota, xml_template['pool_dquota'], xml_template['topup_quota'])
+                                                    #
+                                                    # if len(pool_quota)>0:
+                                                    #     xml_result_pool = xml_template_begin_transact + pool_quota + xml_template_end_transact 
+                                                
+# TODO: check virtual quota
+
                                             
                                             xml_result += xml_template_end_transact
+                                            
                                             #xml_result =subs.export(xml_template['create_subs'])
                                             if verbose>0: 
                                                 logger.debug (xml_result)
+                                                logger.debug (xml_result_pool)
                 
                                             if not test:
                                                 f_out.write("%s\n" % xml_result)
+                                                
+                                                if len(xml_result_pool)>0:
+                                                    f_pool.write("%s\n" % xml_result_pool)
                                                 
                                             # # Pool
                                             # if subs.has_master():
@@ -910,7 +1015,6 @@ USAGE
                                 
             #                            print("loaded elements: "+str(subs.elements()))
 
-        # logger.info("Dumping pools, records: "+str(len(IMSI_Pool)))
         #
         # timestamp = int(time.time()*timestamp_precision)
         # logger.info("pool dumping to: "+filename_prefix+str(timestamp)+filename_suffix)
@@ -934,13 +1038,29 @@ USAGE
         #     if not test:
         #         f_pool.write("%s\n" % xml_result)
         #
-        # if not test:
-        #     f_pool.close()
+        if not test:
+            f_pool.close()
         
         logger.info("Total records: "+str(export_records_count))
         logger.info("SID_IMSI records: "+str(len(SID_IMSI)))
+        logger.info("Pools records: "+str(len(IMSI_Pool)))
+        
+        logger.info("MSISDN range: %s - %s", str(MSISDN_min), str(MSISDN_max))
+        logger.info("IMSI range: %s - %s", str(IMSI_min), str(IMSI_max))
+        
         logger.info("Execution time: " + str(timedelta(seconds=time.time() - time_start)))
         logger.info("Total errors: %s check log file at %s",str(errors_count),logFilePath)
+        
+        logger.info('Storing persistent SID_IMSI to: %s', stor_sid_imsi)
+        
+        with gzip.open(stor_sid_imsi+'.pickle', 'wb') as f:
+            pickle.dump(SID_IMSI, f)
+        
+        logger.info('Done, exiting')
+        
+        # with open(stor_imsi_pool+'.pickle', 'wb') as f:
+        #     pickle.dump(IMSI_Pool, f)
+        
         return 0
     except KeyboardInterrupt:
         ### handle keyboard interrupt ###

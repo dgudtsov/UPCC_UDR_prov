@@ -121,7 +121,7 @@ xml_template_quota_topup="""
 xml_template_delete_subs="""
 <deleteSubscriber>
 <key>
-<MSISDN>{KEY}</MSISDN>
+<IMSI>{IMSI}</IMSI>
 </key>
 </deleteSubscriber>
 """.replace("\n", "")
@@ -164,17 +164,46 @@ xml_template_create_pool="""
 </createPool>
 </txRequest>
 """.replace("\n", "") 
-#+ xml_template_pool_add_member.replace("{MASTER}", "{IMSI}") 
+#+ xml_template_pool_add_member.replace("{IMSI}", "{MASTER}")
+# when creating new pool, automatically assign master to pool 
+
+
+xml_template_pool_del_member="""
+<txRequest id="1">
+<deletePoolMember>
+<key>
+<PoolID>{MASTER}</PoolID>
+</key>
+<members>
+<member>
+<IMSI>{IMSI}</IMSI>
+</member>
+</members>
+</deletePoolMember>
+</txRequest>
+""".replace("\n", "")
+
+xml_template_delete_pool="""
+<txRequest id="1">
+<deletePool>
+<key>
+<PoolID>{MASTER}</PoolID>
+</key>
+</deletePool>
+</txRequest>
+""".replace("\n", "")
+# + xml_template_pool_del_member.replace("{IMSI}", "{MASTER}")
+
 
 xml_template_pool_quota="""
 <txRequest id="1">
 <create createEntityIfNotExist="true">
 <key>
-<PoolID>{IMSI}</PoolID>
+<PoolID>{MASTER}</PoolID>
 </key>
 <entity>
 <data>
-<name>Quota</name>
+<name>PoolQuota</name>
 <interface>XMLIMPORT</interface>
 <xpath/>
 </data>
@@ -196,11 +225,11 @@ xml_template_pool_dyn_quota="""
 <txRequest id="1">
 <create createEntityIfNotExist="true">
 <key>
-<PoolID>{IMSI}</PoolID>
+<PoolID>{MASTER}</PoolID>
 </key>
 <entity>
 <data>
-<name>DynamicQuota</name>
+<name>PoolDynamicQuota</name>
 <interface>XMLIMPORT</interface>
 <xpath/>
 </data>
@@ -223,7 +252,7 @@ xml_template_replace_subs="<transaction><txRequest id=\"1\">"+xml_template_delet
 xml_template=dict()
 
 xml_template = {
-    'delete' : xml_template_delete_subs
+    'delete_subs' : xml_template_delete_subs
     ,'create_subs' : xml_template_subs
     ,'create_quota' : xml_template_quota
     ,'create_dquota' : xml_template_dyn_quota
@@ -233,7 +262,10 @@ xml_template = {
     
     ,'create_pool' : xml_template_create_pool
     ,'pool_member' : xml_template_pool_add_member
+    ,'pool_member_master' : xml_template_pool_add_member.replace("{IMSI}", "{MASTER}")
     ,'pool_quota' : xml_template_pool_quota
     ,'pool_dquota' : xml_template_pool_dyn_quota
+    ,'delete_pool' : xml_template_delete_pool
+    ,'pool_member_delete': xml_template_pool_del_member 
     
     }
