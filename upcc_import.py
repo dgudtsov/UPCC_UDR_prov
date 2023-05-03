@@ -44,9 +44,9 @@ from upcc_servicequota import servicequota
 from asyncio.log import logger
 
 __all__ = []
-__version__ = 0.5
+__version__ = 0.6
 __date__ = '2023-01-05'
-__updated__ = '2023-05-02'
+__updated__ = '2023-05-03'
 
 DEBUG = 0
 TESTRUN = 0
@@ -54,25 +54,24 @@ PROFILE = 0
 
 timestamp_precision = 10000
 
+# time tick for status reporting on console
 time_delta = 10
 
+# number of records in each ixml
 default_chunk_size=1000000
-#default_chunk_size=500000
 
-#import_dir='./import'
 import_dir='./csv'
 
 # only files ends with this suffix will be imported
 input_file_suffix='.txt.gz'
 
+# default output dir for ixml
 default_output_dir='./output/'
 
+# output ixml file name format
 filename_prefix='i_'
-filename_suffix='.ixml.gz'
-
 filename_prefix_pool='i_pool_'
-
-export_result = 'export.csv.gz'
+filename_suffix='.ixml.gz'
 
 #logging
 logFilePath = "./log/export.log"
@@ -106,7 +105,6 @@ upcc2profile_mappings = {
 'MSISDN':'MSISDN',
 'SUBSCRIBERIDENTIFIER':'IMSI',
 'STATION':'Custom20',
-#'USRMASTERIDENTIFIER':'Custom20',
 'BILLINGCYCLEDAY':'BillingDay',
 
 'EXATTR1':'Custom1',
@@ -140,13 +138,14 @@ upcc_SUBSCRIPTION_mapping = {
     'SRVSTATUS_Frozen' : 'Custom18'
     }
 
-# hash for master to slave mapping
-SID_IMSI = {
+# dict for master to slave mapping
+SID_IMSI = dict()
+# {
 #    'SID' : 'IMSI'
-    }
+# }
 
-# list to map master IMSI to pool
-IMSI_Pool = list()
+# set (unique list) to map master IMSI to pool
+IMSI_Pool = set()
 #IMSI_Pool = {
 # 'IMSI' : Pool object    
 #    }
@@ -156,17 +155,18 @@ master_quota_prefix='CLONE-'
 
 # quota prefix to be added
 quota_prefix='T2-'
-# virtual quota prefix for slave
+
+# virtual quota prefix for slave (pass)
 vquota_prefix='T2-v'
 
-# quota size multiplier
+# quota size multiplier (1000 or 1024)
 quota_mult = 1000
 
 # global errors counter
 errors_count = 0
 
+# default values for global vars
 use_cache=False
-
 verbose=0
 
 # counters
@@ -309,6 +309,41 @@ class UPCC_Subscriber(object):
         # if Slave
         return self.profile[upcc2profile_mappings['STATION']]
     
+    def error(self,msg):
+        '''
+        Universal error logging
+        '''
+        
+        global errors_count
+        
+        self.logger.error('%s: SID = %s', msg, self.profile[upcc2profile_mappings['SID']])
+        self.logger.debug('Profile: %s', json.dumps(self.profile, indent=None, default=str))
+        errors_count+=1
+        
+        return
+    
+    def debug(self,msg):
+        '''
+        Universal debug logging
+        '''
+        self.logger.debug('%s: SID = %s', msg, self.profile[upcc2profile_mappings['SID']])
+        self.logger.debug('Profile: %s', json.dumps(self.profile, indent=None, default=str))
+        
+        return
+    
+    def clean(self):
+        '''
+        remove clone-* entities
+        '''
+        # remove clone from Entitlements
+        if upcc_SUBSCRIPTION_mapping['SERVICENAME'] in self.profile:        
+            self.profile[upcc_SUBSCRIPTION_mapping['SERVICENAME']] = [ ent for ent in self.profile[upcc_SUBSCRIPTION_mapping['SERVICENAME']] if not ent.startswith(master_quota_prefix)]
+        
+        # remove clone from quotas
+        self.quota = [ quota for quota in self.quota if not quota['QUOTA'].startswith(quota_prefix+master_quota_prefix) ]
+        
+        return
+    
     def mapping(self):
         '''
         # internal structure:
@@ -333,14 +368,12 @@ class UPCC_Subscriber(object):
                     self.logger.debug('Slave = Master SID = %s', self.profile[upcc2profile_mappings['SID']])
                     self.logger.debug('Profile: %s', json.dumps(self.profile, indent=None, default=str))
                 else:
-                    self.logger.error('Slave has no Master: SID = %s', self.profile[upcc2profile_mappings['SID']])
-                    self.logger.debug('Profile: %s', json.dumps(self.profile, indent=None, default=str))
-                    errors_count+=1
+                    self.error('Slave has no Master')
             
             # skip slaves without master
                     return False
         else:
-            self.logger.error('Unknown Station ID = %s in SID = %s', self.profile[upcc2profile_mappings['STATION']], self.profile[upcc2profile_mappings['SID']])
+            self.error('Unknown Station ID')
             return False
         
         # BillingDay normalization
@@ -351,14 +384,12 @@ class UPCC_Subscriber(object):
             self.profile['BillingDay'] = 0
 
         # skip subs if there are no mandatory fields are refined
-        if 'IMSI' not in self.profile or 'MSISDN' not in self.profile:
-            
-            self.logger.error('IMSI or MSISDN is missing for profile, SID=%s', self.profile[upcc2profile_mappings['SID']])
-            self.logger.debug('Profile: %s', json.dumps(self.profile, indent=None, default=str))
-            
-            errors_count+=1
-                        
-            return False        
+        if 'IMSI' not in self.profile:
+            self.error('IMSI is missing for profile')
+            return False
+        if 'MSISDN' not in self.profile:
+            self.debug('MSISDN is missing for profile')
+            return False         
         
         # populate SID_IMSI dict with masters
         if self.profile[upcc2profile_mappings['STATION']] == upcc_STATION_mapping['1'] :
@@ -366,7 +397,7 @@ class UPCC_Subscriber(object):
                 SID_IMSI[self.profile[upcc2profile_mappings['SID']]] = self.profile[upcc2profile_mappings['SUBSCRIBERIDENTIFIER']]
             else:
                 if not use_cache:
-                    self.logger.error("Duplicate SID-IMSI pair: SID=%s, IMSI=%s",self.profile[upcc2profile_mappings['SID']],self.profile[upcc2profile_mappings['SUBSCRIBERIDENTIFIER']])
+                    self.error('Duplicate SID-IMSI pair')
         
         #PKGSUBSCRIPTION to SUBSCRIPTION mapping
         if 'PKGSUBSCRIPTION' in self.attrs: 
@@ -591,10 +622,7 @@ class UPCC_Subscriber(object):
                                     MASTER = self.profile[upcc2profile_mappings['STATION']]
                                     )
         except:
-            self.logger.error('Key error for profile, SID=%s', self.profile[upcc2profile_mappings['SID']])
-            self.logger.debug('Profile: %s', json.dumps(self.profile, indent=None, default=str))
-            
-            errors_count+=1
+            self.error('Key error for profile')
             
             return ""
         
@@ -806,6 +834,7 @@ USAGE
         logger.handlers[0].doRollover()
         
         logger.info('Application started')
+        logger.info('arguments: %s', argv)
         logger.info('Logging output to: %s',logFilePath)
         
         if test:
@@ -911,11 +940,11 @@ USAGE
                                     if export_records_count%default_chunk_size == 0:
                                         
                                         if export_records_count > 0:
-                                            logger.info("%s records processed: %s",str(default_chunk_size), str(timedelta(seconds=time.time() - int(timestamp / timestamp_precision))))
-                                            logger.info("records per second: %s",str(int(default_chunk_size / (time.time() - int(timestamp / timestamp_precision)))))
+                                            logger.info("%s records processed: %s",'{:,}'.format(default_chunk_size), str(timedelta(seconds=time.time() - int(timestamp / timestamp_precision))))
+                                            logger.info("records per second: %s",'{:,}'.format(int(default_chunk_size / (time.time() - int(timestamp / timestamp_precision)))))
                                         
                                         timestamp = int(time.time()*timestamp_precision)
-                                        logger.info("new chunk on: "+str(export_records_count)+" : "+filename_prefix+str(timestamp)+filename_suffix)
+                                        logger.info("new chunk on: "+'{:,}'.format(export_records_count)+" : "+filename_prefix+str(timestamp)+filename_suffix)
                                         
                                         # in case new chunk close old file...
                                         if export_records_count>1 and not test:
@@ -928,12 +957,11 @@ USAGE
                                     if len(subscriber_rows)>0:
                                     
                                         export_records_count+=1
-                                        
-                                        
                                          
                                         if time.time()  - previous_time  > time_delta:
                                             previous_time = time.time()
-                                            logger.info("processed records: %s", str(export_records_count))
+                                            #logger.info("processed records: %s", str(export_records_count))
+                                            logger.info("processed records: %s", '{:,}'.format(export_records_count))
                                         
                                         # Extract
                                         subs = UPCC_Subscriber (subscriber_rows)
@@ -954,12 +982,17 @@ USAGE
                                             xml_result = xml_template_begin_transact
                                             xml_result_pool = ""
                                             
-                #                                xml_result += subs.export_profile(xml_template['create_subs'],xml_template['create_quota'],xml_template['quota_usage'],xml_template['create_dquota'],xml_template['topup_quota'])
+                                            pool = Pool()
+                                            pool.mapping(subs)
+                                            
+                                            subs.clean()
+                                            
+                                            # (if_test_is_false, if_test_is_true)[test]
+#                                            xml_result += subs.export_profile(xml_template[ ('delete_subs','create_subs')[action == 'create'] ])
                                             
                                             if action == 'delete':
                                                 xml_result += subs.export_profile(xml_template['delete_subs'])
                                             else:
-                                            
                                                 xml_result += subs.export_profile(xml_template['create_subs'])
 
 # TODO: remove quota with clone- prefix from subscribers profiles                                             
@@ -970,12 +1003,11 @@ USAGE
                                             # if subs is master, then create pool
                                             if subs.is_master():
                                                 
-                                                #pool = Pool(subs.get_master())
-                                                pool = Pool()
-                                                pool.mapping(subs)
+                                                # pool = Pool()
+                                                # pool.mapping(subs)
                                                 
                                                 #IMSI_Pool[subs.get_master()] = "1"
-                                                IMSI_Pool.append(subs.get_master())
+                                                IMSI_Pool.add(subs.get_master())
                                                 
                                                 if action == 'create':
                                                     
@@ -984,28 +1016,38 @@ USAGE
                                                     # create pool and add master as first member
                                                     xml_result_pool += pool.export_profile(xml_template['create_pool'])
                                                     
-                                                    xml_result += pool.export_profile(xml_template['pool_member_master'])
+                                                    xml_result += pool.export_profile(xml_template['pool_member'])
                                                     
                                                     xml_result_pool += pool.export_quota(pool.quota, xml_template['pool_quota'], xml_template['quota_usage'])
                                                     xml_result_pool += pool.export_quota(pool.topup_quota, xml_template['pool_dquota'], xml_template['topup_quota'])
                                                 
                                                     xml_result_pool += xml_template_end_transact
                                                 
+                                                else: # delete
+                                                    xml_result_pool = xml_template_begin_transact
+                                                    
+                                                    xml_result += pool.export_profile(xml_template['pool_member_delete'])
+                                                    xml_result_pool += pool.export_profile(xml_template['delete_pool'])
+                                                    
+                                                    xml_result_pool += xml_template_end_transact
+                                                
                                             # if subs is slave, add him into pool
                                             elif subs.has_master():
-                                                #pool = Pool(subs.get_master())
-                                                pool = Pool()
-                                                pool.mapping(subs)
+                                                
+                                                # pool = Pool()
+                                                # pool.mapping(subs)
                                                 
                                                 # check if pool has not been created for master, then create it from slave
                                                 # the only issue is: slave doesn't has SUBSCRIPTION=CLONE-*
                                                 
                                                 if subs.get_master() not in IMSI_Pool:
-                                                    logger.warning("Creating Pool from Slave SID = %s ", str(subs.profile[upcc2profile_mappings['SID']]))
+                                                    logger.debug("Creating Pool from Slave SID = %s ", str(subs.profile[upcc2profile_mappings['SID']]))
 
                                                     xml_result_pool = xml_template_begin_transact
 
                                                     if action == 'delete':
+#                                                        xml_result += pool.export_profile(xml_template['pool_member_delete'])
+                                                        xml_result += pool.export_profile(xml_template['pool_master_delete'])
                                                         xml_result_pool += pool.export_profile(xml_template['delete_pool'])
                                                     else:                                                    
                                                         # create pool and add master as first member
@@ -1014,12 +1056,14 @@ USAGE
                                                         xml_result += pool.export_profile(xml_template['pool_member_master'])
                                                         
                                                         #IMSI_Pool[subs.get_master()] = "1"
-                                                        IMSI_Pool.append(subs.get_master())
+                                                    IMSI_Pool.add(subs.get_master())
                                                         
                                                     xml_result_pool += xml_template_end_transact
                                                 
                                                 if action == 'create':
                                                     xml_result += pool.export_profile(xml_template['pool_member'])
+                                                else:
+                                                    xml_result += pool.export_profile(xml_template['pool_member_delete'])
                                                     
                                                     # virtual quotas on slave, QUOTAFLAG = 1
                                                     # # Pool Quota modifiers from slaves ?
@@ -1030,7 +1074,7 @@ USAGE
                                                     # if len(pool_quota)>0:
                                                     #     xml_result_pool = xml_template_begin_transact + pool_quota + xml_template_end_transact 
                                                 
-
+                                            del pool
                                             
                                             xml_result += xml_template_end_transact
                                             
@@ -1056,6 +1100,9 @@ USAGE
                                             #
                                             #     pool.add_slave(subs)
                                 
+                                        
+                                        del subs
+                                        
                                 # wait for next subs record
                                 subscriber_begin=False
                                 subscriber_end=False
@@ -1089,15 +1136,15 @@ USAGE
         if not test:
             f_pool.close()
         
-        logger.info("Total records: "+str(export_records_count))
-        logger.info("SID_IMSI records: "+str(len(SID_IMSI)))
-        logger.info("Pools records: "+str(len(IMSI_Pool)))
+        logger.info("Total records: "+'{:,}'.format(export_records_count))
+        logger.info("SID_IMSI records: "+'{:,}'.format(len(SID_IMSI)))
+        logger.info("Pools records: "+'{:,}'.format(len(IMSI_Pool)))
         
         logger.info("MSISDN range: %s - %s", str(MSISDN_min), str(MSISDN_max))
         logger.info("IMSI range: %s - %s", str(IMSI_min), str(IMSI_max))
         
         logger.info("Execution time: " + str(timedelta(seconds=time.time() - time_start)))
-        logger.info("Total errors: %s check log file at %s",str(errors_count),logFilePath)
+        logger.info("Total errors: %s check log file at %s",'{:,}'.format(errors_count),logFilePath)
         
         logger.info('Storing persistent SID_IMSI to: %s', stor_sid_imsi)
         with gzip.open(stor_sid_imsi+'.pickle', 'wb') as f:
@@ -1105,7 +1152,7 @@ USAGE
         
         logger.info('Storing persistent IMSI Pools to: %s', stor_imsi_pool)
         with gzip.open(stor_imsi_pool+'.pickle', 'wb') as f:
-            pickle.dump(list(dict.fromkeys(IMSI_Pool)), f)
+            pickle.dump(IMSI_Pool, f)
 
         logger.info('Done, exiting')
         

@@ -274,6 +274,7 @@ xml_template = {
     ,'pool_quota' : xml_template_pool_quota
     ,'pool_dquota' : xml_template_pool_dyn_quota
     ,'delete_pool' : xml_template_delete_pool
-    ,'pool_member_delete': xml_template_pool_del_member 
+    ,'pool_member_delete': xml_template_pool_del_member
+    ,'pool_master_delete': xml_template_pool_del_member.replace("{IMSI}", "{MASTER}")
     
     }
