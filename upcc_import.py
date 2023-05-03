@@ -22,6 +22,8 @@ import os
 import time
 import gzip
 
+import traceback
+
 import pickle
 
 import logging
@@ -154,12 +156,18 @@ master_quota_prefix='CLONE-'
 
 # quota prefix to be added
 quota_prefix='T2-'
+# virtual quota prefix for slave
+vquota_prefix='T2-v'
 
 # quota size multiplier
 quota_mult = 1000
 
 # global errors counter
 errors_count = 0
+
+use_cache=False
+
+verbose=0
 
 # counters
 MSISDN_min=77999999999
@@ -184,7 +192,9 @@ class UPCC_Subscriber(object):
         self.quota = list()
 
 # top-up modifiers        
-        self.dyn_quota = list()
+        self.topup_quota = list()
+        
+        self.pass_quota = list()
 
 # stores mapped udr profile
         self.profile=dict()
@@ -321,15 +331,17 @@ class UPCC_Subscriber(object):
                 if self.profile[upcc2profile_mappings['SID']] in SID_IMSI:
                     self.profile[upcc2profile_mappings['STATION']] = SID_IMSI[self.profile[upcc2profile_mappings['SID']]]
                     self.logger.debug('Slave = Master SID = %s', self.profile[upcc2profile_mappings['SID']])
-                    self.logger.debug('Profile: %s', json.dumps(self.profile, indent=2, default=str))
+                    self.logger.debug('Profile: %s', json.dumps(self.profile, indent=None, default=str))
                 else:
                     self.logger.error('Slave has no Master: SID = %s', self.profile[upcc2profile_mappings['SID']])
-                    self.logger.debug('Profile: %s', json.dumps(self.profile, indent=2, default=str))
+                    self.logger.debug('Profile: %s', json.dumps(self.profile, indent=None, default=str))
                     errors_count+=1
             
             # skip slaves without master
                     return False
-            
+        else:
+            self.logger.error('Unknown Station ID = %s in SID = %s', self.profile[upcc2profile_mappings['STATION']], self.profile[upcc2profile_mappings['SID']])
+            return False
         
         # BillingDay normalization
         try:
@@ -342,7 +354,7 @@ class UPCC_Subscriber(object):
         if 'IMSI' not in self.profile or 'MSISDN' not in self.profile:
             
             self.logger.error('IMSI or MSISDN is missing for profile, SID=%s', self.profile[upcc2profile_mappings['SID']])
-            self.logger.debug('Profile: %s', json.dumps(self.profile, indent=2, default=str))
+            self.logger.debug('Profile: %s', json.dumps(self.profile, indent=None, default=str))
             
             errors_count+=1
                         
@@ -353,9 +365,8 @@ class UPCC_Subscriber(object):
             if self.profile[upcc2profile_mappings['SID']] not in SID_IMSI:
                 SID_IMSI[self.profile[upcc2profile_mappings['SID']]] = self.profile[upcc2profile_mappings['SUBSCRIBERIDENTIFIER']]
             else:
-                self.logger.error("Duplicate SID-IMSI pair: SID=%s, IMSI=%s",self.profile[upcc2profile_mappings['SID']],self.profile[upcc2profile_mappings['SUBSCRIBERIDENTIFIER']])
-        
-
+                if not use_cache:
+                    self.logger.error("Duplicate SID-IMSI pair: SID=%s, IMSI=%s",self.profile[upcc2profile_mappings['SID']],self.profile[upcc2profile_mappings['SUBSCRIBERIDENTIFIER']])
         
         #PKGSUBSCRIPTION to SUBSCRIPTION mapping
         if 'PKGSUBSCRIPTION' in self.attrs: 
@@ -390,6 +401,12 @@ class UPCC_Subscriber(object):
                     # mapping service to entitlement
                     self.profile[upcc_SUBSCRIPTION_mapping['SERVICENAME']].append(subscription['SERVICENAME'])
                     
+                    if subscription['EXPIREDATETIME'] !="FFFFFFFFFFFFFF":
+                        if verbose>0:
+                            self.logger.info("EXPIREDATETIME SID = %s",self.attrs['SID'])
+                            self.logger.debug('Profile: %s', json.dumps(subscription, indent=None, default=str))
+                        
+                    
                     # as subscriber has SUBSCRIPTION=CLONE-* then assign them master marker
                     if subscription['SERVICENAME'].startswith(master_quota_prefix) and self.profile[upcc2profile_mappings['STATION']] == upcc_STATION_mapping['1'] :
                         self.__is_master__ = True
@@ -422,7 +439,7 @@ class UPCC_Subscriber(object):
             
             # remove duplicated entitlements
                 self.profile[upcc_SUBSCRIPTION_mapping['SERVICENAME']] = list(dict.fromkeys(self.profile[upcc_SUBSCRIPTION_mapping['SERVICENAME']]))
-            # remove duplicated frozen servises                
+            # remove duplicated frozen services                
                 self.profile[upcc_SUBSCRIPTION_mapping['SRVSTATUS_Frozen']] = list(dict.fromkeys(self.profile[upcc_SUBSCRIPTION_mapping['SRVSTATUS_Frozen']]))
             
             # map list into string
@@ -439,59 +456,74 @@ class UPCC_Subscriber(object):
                                               
                 for instance in self.attrs['QUOTA']:
                     
+                    # means virtual quota, on slaves only
+                    if instance['QUOTAFLAG']=="1":
+                        if self.profile[upcc2profile_mappings['STATION']] == upcc_STATION_mapping['1']:
+                            self.logger.warning("QUOTAFLAG=1 for master SID = %s",self.attrs['SID'])
+                        
+                    
                     # if subs is master the store imsi in hash sid-imsi
 #                    if instance['QUOTANAME'].startswith(master_quota_prefix) and self.profile[upcc2profile_mappings['STATION']] == upcc_STATION_mapping['1'] :
 #                        SID_IMSI[self.profile[upcc2profile_mappings['SID']]] = self.profile[upcc2profile_mappings['SUBSCRIBERIDENTIFIER']]
 
-                    if instance['QUOTANAME'].startswith(master_quota_prefix) and self.profile[upcc2profile_mappings['STATION']] == upcc_STATION_mapping['1'] :
+                    if instance['QUOTANAME'].startswith(master_quota_prefix) and self.profile[upcc2profile_mappings['STATION']] == upcc_STATION_mapping['1']:
                         self.__is_master__ = True
 #                    if instance['QUOTANAME'].startswith(master_quota_prefix): self.__is_master__ = True
                     
                     # define new dict and transfer there fields from self.attrs 
-                    quota, dyn_quota = dict(), dict() 
+                    quota, topup_quota, pass_quota = dict(), dict(), dict() 
                     
                     quota_volume = 0
                     
                     Q_INITIAL, Q_BALANCE, Q_CONSUMPTION = int(instance['INITIALVALUE']), int(instance['BALANCE']), int(instance['CONSUMPTION'])
                     
-                    # BALANCE + CONSUPTION <= INITIAL
-                    if Q_BALANCE + Q_CONSUMPTION <= Q_INITIAL:
-                        quota_volume = Q_INITIAL - Q_BALANCE
+                    # is not virtual quota 
+                    if instance['QUOTAFLAG']=="0":
                     
-                    # BALANCE + CONSUPTION > INITIAL
-                    # CONSUMPTION >= INITIAL
-                    elif Q_CONSUMPTION >= Q_INITIAL:
+                        # BALANCE + CONSUPTION <= INITIAL
+                        if Q_BALANCE + Q_CONSUMPTION <= Q_INITIAL:
+                            quota_volume = Q_INITIAL - Q_BALANCE
+                        
+                        # BALANCE + CONSUPTION > INITIAL
+                        # CONSUMPTION >= INITIAL
+                        elif Q_CONSUMPTION >= Q_INITIAL:
+                        
+                            quota_volume = Q_CONSUMPTION
+                            
+                            if Q_BALANCE>0:
+                               
+                               # top-up = BALANCE
+                               #topup_quota['USAGE'] = Q_INITIAL - Q_BALANCE 
+                               topup_quota['VOLUME'] = Q_BALANCE
+                            
+                        #elif Q_CONSUMPTION < Q_INITIAL:
+                        # CONSUMPTION < INITIAL
+                        else:
+                            quota_volume = Q_CONSUMPTION
+                            
+                            # top-up = (BALANCE + CONSUMPTION – INITIAL)
+                            topup_quota['VOLUME'] = Q_BALANCE + Q_CONSUMPTION - Q_INITIAL
+                            
+                        
+                        # add prefix to quota name
+                        quota['QUOTA'] = quota_prefix+instance['QUOTANAME']
+                        quota['VOLUME'] = quota_volume*quota_mult
+                        
+                        self.quota.append(quota)
+                        
+                        if len(topup_quota)>0:
+                            
+                            #topup_quota['QUOTA'] = topup_quota['INSTANCE'] = quota_prefix+instance['QUOTANAME']
+                            topup_quota['QUOTA'] = topup_quota['INSTANCE'] = quota['QUOTA']
+    #                        topup_quota['INSTANCE'] += str(random.randrange(100000,999999))
+                            topup_quota['VOLUME'] *= quota_mult
+                            self.topup_quota.append(topup_quota)  
                     
-                        quota_volume = Q_CONSUMPTION
-                        
-                        if Q_BALANCE>0:
-                           
-                           # top-up = BALANCE
-                           #dyn_quota['USAGE'] = Q_INITIAL - Q_BALANCE 
-                           dyn_quota['VOLUME'] = Q_BALANCE
-                        
-                    #elif Q_CONSUMPTION < Q_INITIAL:
-                    # CONSUMPTION < INITIAL
-                    else:
-                        quota_volume = Q_CONSUMPTION
-                        
-                        # top-up = (BALANCE + CONSUMPTION – INITIAL)
-                        dyn_quota['VOLUME'] = Q_BALANCE + Q_CONSUMPTION - Q_INITIAL
-                        
-                    
-                    # add prefix to quota name
-                    quota['QUOTA'] = quota_prefix+instance['QUOTANAME']
-                    quota['VOLUME'] = quota_volume*quota_mult
-                    
-                    self.quota.append(quota)
-                    
-                    if len(dyn_quota)>0:
-                        
-                        #dyn_quota['QUOTA'] = dyn_quota['INSTANCE'] = quota_prefix+instance['QUOTANAME']
-                        dyn_quota['QUOTA'] = dyn_quota['INSTANCE'] = quota['QUOTA']
-#                        dyn_quota['INSTANCE'] += str(random.randrange(100000,999999))
-                        dyn_quota['VOLUME'] *= quota_mult
-                        self.dyn_quota.append(dyn_quota)  
+                    # virtual quota
+                    elif instance['QUOTAFLAG']=="1":
+                        pass_quota['QUOTA'] = pass_quota['INSTANCE'] = vquota_prefix+instance['QUOTANAME']
+                        pass_quota['VOLUME'] = Q_BALANCE * quota_mult
+                        self.pass_quota.append(pass_quota)
         
         return True
     
@@ -530,7 +562,7 @@ class UPCC_Subscriber(object):
             return self.generate_quota(quota,template_quota,template_quota_usage)
         return ""
     
-    #def export_profile(self,template_profile,template_quota=None,template_quota_usage=None,template_dquota=None,template_dyn_quota=None):
+    #def export_profile(self,template_profile,template_quota=None,template_quota_usage=None,template_dquota=None,template_topup_quota=None):
     def export_profile(self,template_profile):
         '''
         Export mapped profile into xml using templates
@@ -546,6 +578,8 @@ class UPCC_Subscriber(object):
         xml_ent_result=""
         if upcc_SUBSCRIPTION_mapping['SERVICENAME'] in self.profile:
             xml_ent_result="".join([xml_template_entitlement.format(Entitlement=ent) for ent in self.profile[upcc_SUBSCRIPTION_mapping['SERVICENAME']] ])
+        elif verbose>0:
+            self.logger.debug("Subscriber without SERVICENAME, SID = %s ",self.attrs['SID'])
         
         try:
             xml_profile = template_profile.format(
@@ -558,7 +592,7 @@ class UPCC_Subscriber(object):
                                     )
         except:
             self.logger.error('Key error for profile, SID=%s', self.profile[upcc2profile_mappings['SID']])
-            self.logger.debug('Profile: %s', json.dumps(self.profile, indent=2, default=str))
+            self.logger.debug('Profile: %s', json.dumps(self.profile, indent=None, default=str))
             
             errors_count+=1
             
@@ -567,18 +601,18 @@ class UPCC_Subscriber(object):
         return xml_profile
 
         # xml_quota = self.export_quota(self.quota,template_quota,template_quota_usage) 
-        # xml_dyn_quota = self.export_quota (self.dyn_quota,template_dquota,template_dyn_quota)
+        # xml_topup_quota = self.export_quota (self.topup_quota,template_dquota,template_topup_quota)
         # xml_quota_usage = ""
         #
         # # if template for quota is defined, then using it. If not then only base profile will be exported
         # if template_quota is not None and template_quota_usage is not None and len(self.quota)>0:
         #     xml_quota = self.generate_quota(self.quota,template_quota,template_quota_usage)
         #
-        # if template_dquota is not None and template_dyn_quota is not None and len(self.dyn_quota)>0:
-        #     xml_dyn_quota = self.generate_quota(self.dyn_quota,template_dquota,template_dyn_quota)
+        # if template_dquota is not None and template_topup_quota is not None and len(self.topup_quota)>0:
+        #     xml_topup_quota = self.generate_quota(self.topup_quota,template_dquota,template_topup_quota)
         #
         # # concat profile with quotas
-        # return xml_template_begin_transact + xml_profile + xml_quota + xml_dyn_quota + xml_template_end_transact
+        # return xml_template_begin_transact + xml_profile + xml_quota + xml_topup_quota + xml_template_end_transact
 
 
 class Pool(UPCC_Subscriber):
@@ -593,7 +627,7 @@ class Pool(UPCC_Subscriber):
         self.quota = list()
 
         # top-up modifiers
-        self.dyn_quota = list()
+        self.topup_quota = list()
 
         # stores mapped udr profile
         self.profile=dict()
@@ -614,14 +648,15 @@ class Pool(UPCC_Subscriber):
     def mapping(self, subs):
 
     ### Transfer values from Subscriber profile to Pool profile with Clone-* prefix
-        # store to Entitlement only items with Clone-* prefix        
-        self.profile[upcc_SUBSCRIPTION_mapping['SERVICENAME']] = [ ent for ent in subs.profile[upcc_SUBSCRIPTION_mapping['SERVICENAME']] if master_quota_prefix in ent]
+        # store to Entitlement only items with Clone-* prefix
+        if upcc_SUBSCRIPTION_mapping['SERVICENAME'] in subs.profile:        
+            self.profile[upcc_SUBSCRIPTION_mapping['SERVICENAME']] = [ ent for ent in subs.profile[upcc_SUBSCRIPTION_mapping['SERVICENAME']] if master_quota_prefix in ent]
 
         # quota from subs to pool
         self.quota = [ quota for quota in subs.quota if quota['QUOTA'].startswith(quota_prefix+master_quota_prefix) ]
         
         # dynquota from subs to pool
-        self.dyn_quota = [ dyn_quota for dyn_quota in subs.dyn_quota if dyn_quota['QUOTA'].startswith(quota_prefix+master_quota_prefix)]
+        self.topup_quota = [ topup_quota for topup_quota in subs.topup_quota if topup_quota['QUOTA'].startswith(quota_prefix+master_quota_prefix)]
     ###
         
         # just to keep continuance
@@ -678,6 +713,10 @@ def main(argv=None): # IGNORE:C0111
     global IMSI_min
     global IMSI_max
     
+    global use_cache
+    
+    global verbose
+    
     if argv is None:
         argv = sys.argv
     else:
@@ -713,6 +752,8 @@ USAGE
         
         parser.add_argument("-f", "--format", dest="format", required=False, choices=['csv','raw'], help="format: csv or raw, [default: %(default)s]", default='csv')
         
+        parser.add_argument("-c", "--cache", dest="cache", action="count", help="use cached persistent [default: %(default)s]", default=None)
+        
         parser.add_argument("-a", "--action", dest="action", required=False, choices=['create','delete'], help="action: create or delete, [default: %(default)s]", default='create')
 
         parser.add_argument("-o", "--output", dest="output_dir", help="output directory [default: %(default)s]", default=default_output_dir)
@@ -734,6 +775,7 @@ USAGE
         format = args.format
         test = args.test
         action = args.action
+        use_cache = args.cache
         
         output_dir = args.output_dir
         
@@ -770,15 +812,22 @@ USAGE
             logger.info('TEST run, without writing result')
         else:
             logger.info('Output to: %s',output_dir)
+#TODO: store slaves imsi in separate file
+
+        if use_cache:
+            logger.info('Loading persistent SID_IMSI from: %s', stor_sid_imsi)
+            try:
+                with gzip.open(stor_sid_imsi + '.pickle', 'rb') as f:
+                    SID_IMSI = pickle.load(f)
+            except:
+                logger.info('persistent file is not found, new will be created')
         
-        logger.info('Loading persistent SID_IMSI from: %s', stor_sid_imsi)
-#        logger.info('Loading persistent from: %s', stor_imsi_pool)
-        
-        try:
-            with gzip.open(stor_sid_imsi + '.pickle', 'rb') as f:
-                SID_IMSI = pickle.load(f)
-        except:
-            logger.info('file is not found')
+            logger.info('Loading persistent IMSI Pool from: %s', stor_imsi_pool)
+            try:
+                with gzip.open(stor_imsi_pool+'.pickle', 'rb') as f:
+                    IMSI_Pool = pickle.load(f)
+            except:
+                logger.info('persistent file is not found, new will be created')        
         
         if verbose > 0:
             logger.info("Verbose mode on")
@@ -803,8 +852,6 @@ USAGE
             f_pool = gzip.open(output_dir+filename_prefix_pool+str(timestamp)+filename_suffix, 'at')
         
         for inpath in paths:
-            ### do something with inpath ###
-#            print("processing "+inpath)
             logger.info("processing "+inpath)
                        
 #            for inp in next(os.walk(inpath), (None, None, []))[2]:
@@ -891,7 +938,7 @@ USAGE
                                         # Extract
                                         subs = UPCC_Subscriber (subscriber_rows)
                                         if verbose>0:
-                                            logger.debug(json.dumps(subs.attrs, indent=2, default=str))
+                                            logger.debug(json.dumps(subs.attrs, indent=None, default=str))
                                         
                                         # Transform
                                         if subs.mapping() :
@@ -903,7 +950,7 @@ USAGE
                                             if int(subs.profile['MSISDN']) < MSISDN_min: MSISDN_min = int(subs.profile['MSISDN'])
             
                                             # Load
-                                            # xml_template_begin_transact + xml_profile + xml_quota + xml_dyn_quota + xml_template_end_transact
+                                            # xml_template_begin_transact + xml_profile + xml_quota + xml_topup_quota + xml_template_end_transact
                                             xml_result = xml_template_begin_transact
                                             xml_result_pool = ""
                                             
@@ -914,9 +961,11 @@ USAGE
                                             else:
                                             
                                                 xml_result += subs.export_profile(xml_template['create_subs'])
-# TODO: remove quota with clone- prefix                                             
+
+# TODO: remove quota with clone- prefix from subscribers profiles                                             
                                                 xml_result += subs.export_quota(subs.quota, xml_template['create_quota'], xml_template['quota_usage'])
-                                                xml_result += subs.export_quota(subs.dyn_quota, xml_template['create_dquota'], xml_template['topup_quota'])
+                                                xml_result += subs.export_quota(subs.topup_quota, xml_template['create_dquota'], xml_template['topup_quota'])
+                                                xml_result += subs.export_quota(subs.pass_quota, xml_template['create_dquota'], xml_template['pass_quota'])
                                             
                                             # if subs is master, then create pool
                                             if subs.is_master():
@@ -938,7 +987,7 @@ USAGE
                                                     xml_result += pool.export_profile(xml_template['pool_member_master'])
                                                     
                                                     xml_result_pool += pool.export_quota(pool.quota, xml_template['pool_quota'], xml_template['quota_usage'])
-                                                    xml_result_pool += pool.export_quota(pool.dyn_quota, xml_template['pool_dquota'], xml_template['topup_quota'])
+                                                    xml_result_pool += pool.export_quota(pool.topup_quota, xml_template['pool_dquota'], xml_template['topup_quota'])
                                                 
                                                     xml_result_pool += xml_template_end_transact
                                                 
@@ -976,12 +1025,11 @@ USAGE
                                                     # # Pool Quota modifiers from slaves ?
                                                     # pool_quota = ""
                                                     # pool_quota += pool.export_quota(pool.quota, xml_template['pool_quota'], xml_template['quota_usage'])
-                                                    # pool_quota += pool.export_quota(pool.dyn_quota, xml_template['pool_dquota'], xml_template['topup_quota'])
+                                                    # pool_quota += pool.export_quota(pool.topup_quota, xml_template['pool_dquota'], xml_template['topup_quota'])
                                                     #
                                                     # if len(pool_quota)>0:
                                                     #     xml_result_pool = xml_template_begin_transact + pool_quota + xml_template_end_transact 
                                                 
-# TODO: check virtual quota
 
                                             
                                             xml_result += xml_template_end_transact
@@ -1052,14 +1100,14 @@ USAGE
         logger.info("Total errors: %s check log file at %s",str(errors_count),logFilePath)
         
         logger.info('Storing persistent SID_IMSI to: %s', stor_sid_imsi)
-        
         with gzip.open(stor_sid_imsi+'.pickle', 'wb') as f:
             pickle.dump(SID_IMSI, f)
         
+        logger.info('Storing persistent IMSI Pools to: %s', stor_imsi_pool)
+        with gzip.open(stor_imsi_pool+'.pickle', 'wb') as f:
+            pickle.dump(list(dict.fromkeys(IMSI_Pool)), f)
+
         logger.info('Done, exiting')
-        
-        # with open(stor_imsi_pool+'.pickle', 'wb') as f:
-        #     pickle.dump(IMSI_Pool, f)
         
         return 0
     except KeyboardInterrupt:
@@ -1070,7 +1118,10 @@ USAGE
             raise(e)
         indent = len(program_name) * " "
         sys.stderr.write(program_name + ": " + repr(e) + "\n")
-        sys.stderr.write(indent + "  for help use --help")
+        sys.stderr.write(indent + "  error at SID = "+subs.attrs['SID']+"\n")
+        sys.stderr.write(indent + "  check log file at "+logFilePath+"\n")
+        sys.stderr.write(indent + "  for help use --help"+"\n")
+        sys.stderr.write(traceback.format_exc())
         return 2
 
 if __name__ == "__main__":
@@ -1092,6 +1143,7 @@ if __name__ == "__main__":
 #        stats = p.strip_dirs().sort_stats('cumulative')
 #        p.sort_stats("time", "name").print_stats()
         p.sort_stats("cumulative").print_stats(20)
+        p.sort_stats("time").print_stats(20)
 #        stats.print_stats()
 #        statsfile.close()
         sys.exit(0)

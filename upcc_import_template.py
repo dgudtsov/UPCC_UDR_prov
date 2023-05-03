@@ -116,6 +116,13 @@ xml_template_quota_topup="""
 </DynamicQuota>
 """.replace("\n", "")
 
+xml_template_quota_pass="""
+<DynamicQuota name="{QUOTA}">
+<InstanceId>{INSTANCE}</InstanceId>
+<Type>pass</Type>
+<InitialTotalVolume>{VOLUME}</InitialTotalVolume>
+</DynamicQuota>
+""".replace("\n", "")
 
 # Delete subscribers
 xml_template_delete_subs="""
@@ -258,6 +265,7 @@ xml_template = {
     ,'create_dquota' : xml_template_dyn_quota
     ,'quota_usage' : xml_template_quota_usage
     ,'topup_quota' : xml_template_quota_topup
+    ,'pass_quota' : xml_template_quota_pass
     ,'replace_subs': xml_template_replace_subs
     
     ,'create_pool' : xml_template_create_pool
