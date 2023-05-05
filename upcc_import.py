@@ -44,9 +44,9 @@ from upcc_servicequota import servicequota
 from asyncio.log import logger
 
 __all__ = []
-__version__ = 0.6
+__version__ = 0.7
 __date__ = '2023-01-05'
-__updated__ = '2023-05-03'
+__updated__ = '2023-05-05'
 
 DEBUG = 0
 TESTRUN = 0
@@ -857,7 +857,7 @@ USAGE
         
         logger.handlers[0].doRollover()
         
-        logger.info('Application started')
+        logger.info('Application started %s %s',program_version, program_build_date)
         logger.info('arguments: %s', argv)
         logger.info('Logging output to: %s',logFilePath)
         
