@@ -167,6 +167,7 @@ quota_mult = 1000
 
 # global errors counter
 errors_count = 0
+errors_stat = dict()
 
 # default values for global vars
 use_cache=False
@@ -312,6 +313,15 @@ class UPCC_Subscriber(object):
         # if Slave
         return self.profile[upcc2profile_mappings['STATION']]
     
+    def __error_peg__(self,msg):
+        
+        global errors_stat
+        
+        errors_stat[msg] = errors_stat[msg]+1 if msg in errors_stat else 1
+                
+        return
+    
+    
     def error(self,msg):
         '''
         Universal error logging
@@ -323,6 +333,8 @@ class UPCC_Subscriber(object):
         self.logger.debug('Profile: %s', json.dumps(self.profile, indent=None, default=str))
         errors_count+=1
         
+        self.__error_peg__(msg)
+        
         return
     
     def debug(self,msg):
@@ -331,6 +343,8 @@ class UPCC_Subscriber(object):
         '''
         self.logger.debug('%s: SID = %s', msg, self.profile[upcc2profile_mappings['SID']])
         self.logger.debug('Profile: %s', json.dumps(self.profile, indent=None, default=str))
+        
+        self.__error_peg__(msg)
         
         return
     
@@ -371,7 +385,7 @@ class UPCC_Subscriber(object):
                     self.logger.debug('Slave = Master SID = %s', self.profile[upcc2profile_mappings['SID']])
                     self.logger.debug('Profile: %s', json.dumps(self.profile, indent=None, default=str))
                 else:
-                    self.error('Slave has no Master')
+                    self.debug('Slave has no Master')
             
             # skip slaves without master
                     return False
@@ -403,6 +417,7 @@ class UPCC_Subscriber(object):
                     self.error('Duplicate SID-IMSI pair')
         
         #PKGSUBSCRIPTION to SUBSCRIPTION mapping
+#TODO: map SERVICEPACKAGE to Tier 
         if 'PKGSUBSCRIPTION' in self.attrs: 
             if len(self.attrs['PKGSUBSCRIPTION'])>0 :
                 # for each package
@@ -1169,6 +1184,7 @@ USAGE
         
         logger.info("Execution time: " + str(timedelta(seconds=time.time() - time_start)))
         logger.info("Total errors: %s check log file at %s",'{:,}'.format(errors_count),logFilePath)
+        logger.info("Errors stat: %s",json.dumps(errors_stat, indent=2, default=str))
         
         logger.info('Storing persistent SID_IMSI to: %s', stor_sid_imsi)
         with gzip.open(stor_sid_imsi+'.pickle', 'wb') as f:
