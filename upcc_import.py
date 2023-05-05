@@ -337,6 +337,12 @@ class UPCC_Subscriber(object):
         
         return
     
+    def warn(self,msg):
+        self.logger.warning('%s: SID = %s', msg, self.profile[upcc2profile_mappings['SID']])
+        self.__error_peg__(msg)
+        
+        return
+    
     def debug(self,msg):
         '''
         Universal debug logging
@@ -529,8 +535,7 @@ class UPCC_Subscriber(object):
                     # means virtual quota, on slaves only
                     if instance['QUOTAFLAG']=="1":
                         if self.profile[upcc2profile_mappings['STATION']] == upcc_STATION_mapping['1']:
-                            self.logger.warning("QUOTAFLAG=1 for master SID = %s",self.attrs['SID'])
-                        
+                            self.warn("QUOTAFLAG=1 for master")
                     
                     # if subs is master the store imsi in hash sid-imsi
 #                    if instance['QUOTANAME'].startswith(master_quota_prefix) and self.profile[upcc2profile_mappings['STATION']] == upcc_STATION_mapping['1'] :
