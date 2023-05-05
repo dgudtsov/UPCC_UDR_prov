@@ -92,6 +92,9 @@ fields_names={
 
 multi_fields = ('SUBSCRIBERGRPNAME','SUBSCRIPTION','PKGSUBSCRIPTION','QUOTA','ACCOUNT')
 
+# set of services to omit from export if EXPIREDATETIME is defined
+omit_expire_services= {'406792','406793'}
+
 tag_begin = "<SUBBEGIN"
 tag_end = "<SUBEND"
 
@@ -428,14 +431,23 @@ class UPCC_Subscriber(object):
                 # Custom18
                 self.profile[upcc_SUBSCRIPTION_mapping['SRVSTATUS_Frozen']] = list()
                 
-                for subscription in self.attrs['SUBSCRIPTION']:
+                for subscription in self.attrs['SUBSCRIPTION'] :
+
+                    
+#                    if subscription['EXPIREDATETIME'] !="FFFFFFFFFFFFFF" and subscription['SERVICENAME'] in omit_expire_services:
+                    if subscription['SERVICENAME'] in omit_expire_services:
+                        # skip service mapping
+                        continue
+                    
                     # mapping service to entitlement
                     self.profile[upcc_SUBSCRIPTION_mapping['SERVICENAME']].append(subscription['SERVICENAME'])
-                    
-                    if subscription['EXPIREDATETIME'] !="FFFFFFFFFFFFFF":
-                        if verbose>0:
-                            self.logger.info("EXPIREDATETIME SID = %s",self.attrs['SID'])
-                            self.logger.debug('Profile: %s', json.dumps(subscription, indent=None, default=str))
+
+#                        if subscription['SERVICENAME'] in omit_expire_services:
+#                            self.logger.info("EXPIREDATETIME for service %s SID = %s",subscription , self.attrs['SID'])
+                        
+#                        if verbose>0:
+#                            self.logger.debug("EXPIREDATETIME SID = %s",self.attrs['SID'])
+#                            self.logger.debug('Profile: %s', json.dumps(subscription, indent=None, default=str))
                         
                     
                     # as subscriber has SUBSCRIPTION=CLONE-* then assign them master marker
@@ -486,6 +498,18 @@ class UPCC_Subscriber(object):
             if len(self.attrs['QUOTA'])>0 :
                                               
                 for instance in self.attrs['QUOTA']:
+                    
+                    skip_quota=False
+                    
+                    # skip quota mapping
+                    for omit_service in omit_expire_services:
+                        if instance['QUOTANAME'].startswith(omit_service) or instance['QUOTANAME'].startswith(master_quota_prefix+omit_service):
+                            skip_quota = True
+                            break
+                    if skip_quota:
+                        continue
+
+                    
                     
                     # means virtual quota, on slaves only
                     if instance['QUOTAFLAG']=="1":
