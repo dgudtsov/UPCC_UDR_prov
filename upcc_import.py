@@ -44,9 +44,9 @@ from upcc_servicequota import servicequota
 from asyncio.log import logger
 
 __all__ = []
-__version__ = 0.7
+__version__ = 0.8
 __date__ = '2023-01-05'
-__updated__ = '2023-05-05'
+__updated__ = '2023-05-12'
 
 DEBUG = 0
 TESTRUN = 0
@@ -141,6 +141,10 @@ upcc_SUBSCRIPTION_mapping = {
     'SRVSTATUS_Frozen' : 'Custom18'
     }
 
+upcc_PKGSUBSCRIPTION_mapping = {
+    'PKGNAME' : 'Tier',
+    }
+
 # dict for master to slave mapping
 SID_IMSI = dict()
 # {
@@ -230,17 +234,23 @@ class UPCC_Subscriber(object):
 
 #                if subscriber_begin and len(f_line_str)>1:
                 if len(f_line_str)>1:
-                    # separator between attribute and its value
-                    (s_key,s_value) = (f_line_str.split('=')[0], f_line_str.split('=')[1])
+                    
+                    try:
+                    
+                        # separator between attribute and its value
+                        (s_key,s_value) = (f_line_str.split('=')[0], f_line_str.split('=')[1])
 
-                    # list of attributes with multiple occurence
-                    if s_key in multi_fields:
-                        if s_key in self.attrs:
-                            self.attrs[s_key].append(s_value)
+                        # list of attributes with multiple occurence
+                        if s_key in multi_fields:
+                            if s_key in self.attrs:
+                                self.attrs[s_key].append(s_value)
+                            else:
+                                self.attrs.update({s_key: [s_value]})
                         else:
-                            self.attrs.update({s_key: [s_value]})
-                    else:
-                        self.attrs.update({s_key: s_value})
+                            self.attrs.update({s_key: s_value})
+                    except: 
+                        self.error('Error parsing '+f_line_str)
+                        
         # iterate over only those fields which are defined
         # and automatically unpack complex attributes (quota, subscription, etc.)
         for field in fields_names.keys():
@@ -329,7 +339,11 @@ class UPCC_Subscriber(object):
         
         global errors_count
         
-        self.logger.error('%s: SID = %s', msg, self.profile[upcc2profile_mappings['SID']])
+        if upcc2profile_mappings['SID'] in self.profile:
+            self.logger.error('%s: SID = %s', msg, self.profile[upcc2profile_mappings['SID']])
+        else:
+            self.logger.error('%s', msg)
+            
         self.logger.debug('Profile: %s', json.dumps(self.profile, indent=None, default=str))
         errors_count+=1
         
@@ -361,6 +375,11 @@ class UPCC_Subscriber(object):
         # remove clone from Entitlements
         if upcc_SUBSCRIPTION_mapping['SERVICENAME'] in self.profile:        
             self.profile[upcc_SUBSCRIPTION_mapping['SERVICENAME']] = [ ent for ent in self.profile[upcc_SUBSCRIPTION_mapping['SERVICENAME']] if not ent.startswith(master_quota_prefix)]
+
+        # remove clone from Tiers, set to list
+        if upcc_PKGSUBSCRIPTION_mapping['PKGNAME'] in self.profile:        
+            self.profile[upcc_PKGSUBSCRIPTION_mapping['PKGNAME']] = [ ent for ent in self.profile[upcc_PKGSUBSCRIPTION_mapping['PKGNAME']] if not ent.startswith(master_quota_prefix)]
+
         
         # remove clone from quotas
         self.quota = [ quota for quota in self.quota if not quota['QUOTA'].startswith(quota_prefix+master_quota_prefix) ]
@@ -375,8 +394,6 @@ class UPCC_Subscriber(object):
         # self.quota - list of dicts, each dict contains: quota name and quota usage
         # example: [{'QUOTA': '409239-DATA_D_Quota', 'VOLUME': '65013247'}, {'QUOTA': '40777900081-DATA_D_Quota', 'USAGE': '865069'}, {'QUOTA': '413102-DATA_D_Quota', 'USAGE': '0'}]
         '''
-        
-        global errors_count
         
         # map all attributes were defined in upcc2profile_mappings
         [ self.profile.update({upcc2profile_mappings[k]:self.attrs[k]}) for k in self.attrs if k in upcc2profile_mappings ]
@@ -426,8 +443,18 @@ class UPCC_Subscriber(object):
 #TODO: map SERVICEPACKAGE to Tier 
         if 'PKGSUBSCRIPTION' in self.attrs: 
             if len(self.attrs['PKGSUBSCRIPTION'])>0 :
+                
+                # Tier
+                self.profile[upcc_PKGSUBSCRIPTION_mapping['PKGNAME']] = set()
+                
                 # for each package
                 for pkg in self.attrs['PKGSUBSCRIPTION']:
+
+                    # mapping service to Tier
+                    self.profile[upcc_PKGSUBSCRIPTION_mapping['PKGNAME']].add(pkg['PKGNAME'])
+                    
+                    if pkg['PKGNAME'].startswith(master_quota_prefix) and self.profile[upcc2profile_mappings['STATION']] == upcc_STATION_mapping['1'] :
+                        self.__is_master__ = True
                     
                     # using pkgsubscription imported from upcc_pkgsubscription module
                     if pkg['PKGNAME'] in pkgsubscription:
@@ -643,18 +670,26 @@ class UPCC_Subscriber(object):
         Export mapped profile into xml using templates
         '''
         
-        global errors_count
-        
         # generate xml set for custom fields
         xml_custom_result=""
         xml_custom_result="".join([xml_template_custom.format(Custom_Name=attr,Custom_Value=self.profile[attr]) for attr in self.profile if 'Custom' in attr])
         
         # generate xml set for entitlements fields
-        xml_ent_result=""
+        xml_ent_result = xml_tier_result = ""
+        
         if upcc_SUBSCRIPTION_mapping['SERVICENAME'] in self.profile:
             xml_ent_result="".join([xml_template_entitlement.format(Entitlement=ent) for ent in self.profile[upcc_SUBSCRIPTION_mapping['SERVICENAME']] ])
         elif verbose>0:
-            self.logger.debug("Subscriber without SERVICENAME, SID = %s ",self.attrs['SID'])
+            self.debug("Subscriber without SERVICENAME")
+        
+        if upcc_PKGSUBSCRIPTION_mapping['PKGNAME'] in self.profile:
+#            self.profile[upcc_SUBSCRIPTION_mapping['SRVSTATUS_Frozen']] = ';'.join(self.profile[upcc_PKGSUBSCRIPTION_mapping['PKGNAME']])
+            if len(self.profile[upcc_PKGSUBSCRIPTION_mapping['PKGNAME']])>0:
+                tiers = ';'.join(self.profile[upcc_PKGSUBSCRIPTION_mapping['PKGNAME']])
+                xml_tier_result=xml_template_tier.format(Tier=tiers)
+            
+        elif verbose>0:
+            self.debug("Subscriber without PKGNAME")        
         
         try:
             xml_profile = template_profile.format(
@@ -662,6 +697,7 @@ class UPCC_Subscriber(object):
                                     IMSI = self.profile['IMSI'],
                                     BillingDay = self.profile['BillingDay'],
                                     ENTITLEMENT = xml_ent_result,
+                                    TIER = xml_tier_result,
                                     CUSTOM = xml_custom_result,
                                     MASTER = self.profile[upcc2profile_mappings['STATION']]
                                     )
@@ -706,6 +742,9 @@ class Pool(UPCC_Subscriber):
         
         # Entitlements
         self.profile[upcc_SUBSCRIPTION_mapping['SERVICENAME']] = list()
+                
+        # Tier
+        self.profile[upcc_PKGSUBSCRIPTION_mapping['PKGNAME']] = set()
         
 #        # assign IMSI of master to Pool ID
         self.profile['IMSI'] = ""
@@ -720,9 +759,14 @@ class Pool(UPCC_Subscriber):
     def mapping(self, subs):
 
     ### Transfer values from Subscriber profile to Pool profile with Clone-* prefix
+        
         # store to Entitlement only items with Clone-* prefix
         if upcc_SUBSCRIPTION_mapping['SERVICENAME'] in subs.profile:        
             self.profile[upcc_SUBSCRIPTION_mapping['SERVICENAME']] = [ ent for ent in subs.profile[upcc_SUBSCRIPTION_mapping['SERVICENAME']] if master_quota_prefix in ent]
+            
+        # store to Tier only items with Clone-* prefix
+        if upcc_PKGSUBSCRIPTION_mapping['PKGNAME'] in subs.profile:        
+            self.profile[upcc_PKGSUBSCRIPTION_mapping['PKGNAME']] = [ ent for ent in subs.profile[upcc_PKGSUBSCRIPTION_mapping['PKGNAME']] if master_quota_prefix in ent]
 
         # quota from subs to pool
         self.quota = [ quota for quota in subs.quota if quota['QUOTA'].startswith(quota_prefix+master_quota_prefix) ]
@@ -1210,7 +1254,9 @@ USAGE
             raise(e)
         indent = len(program_name) * " "
         sys.stderr.write(program_name + ": " + repr(e) + "\n")
-        sys.stderr.write(indent + "  error at SID = "+subs.attrs['SID']+"\n")
+        
+        if 'SID' in subs.attrs:
+            sys.stderr.write(indent + "  error at SID = "+subs.attrs['SID']+"\n")
         sys.stderr.write(indent + "  check log file at "+logFilePath+"\n")
         sys.stderr.write(indent + "  for help use --help"+"\n")
         sys.stderr.write(traceback.format_exc())

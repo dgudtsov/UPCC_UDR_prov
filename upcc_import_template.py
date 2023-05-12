@@ -14,6 +14,10 @@ xml_template_entitlement="""
 <field name="Entitlement">{Entitlement}</field>
 """.replace("\n", "")
 
+xml_template_tier="""
+<field name="Tier">{Tier}</field>
+""".replace("\n", "")
+
 xml_template_begin_transact="<transaction>"
 xml_template_end_transact="</transaction>"
 
@@ -37,6 +41,7 @@ xml_template_subs="""
 <field name="IMSI">{IMSI}</field>
 <field name="BillingDay">{BillingDay}</field>
 {ENTITLEMENT}
+{TIER}
 {CUSTOM}
 </subscriber>
 ]]>
@@ -164,6 +169,7 @@ xml_template_create_pool="""
 <pool>
 <field name="PoolID">{MASTER}</field>
 {ENTITLEMENT}
+{TIER}
 </pool>
 ]]>
 </content>
