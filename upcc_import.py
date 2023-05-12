@@ -161,10 +161,12 @@ IMSI_Pool = set()
 master_quota_prefix='CLONE-'
 
 # quota prefix to be added
-quota_prefix='T2-'
+#quota_prefix='T2-'
+quota_prefix=''
 
 # virtual quota prefix for slave (pass)
-vquota_prefix='T2-v'
+#vquota_prefix='T2-v'
+vquota_prefix='v'
 
 # quota size multiplier (1000 or 1024)
 quota_mult = 1000
