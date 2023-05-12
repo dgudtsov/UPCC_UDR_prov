@@ -12,7 +12,7 @@ profile_template = {
   "MSISDN": "",
   "STATUS": "1",
   "PAIDTYPE": "254",
-  "STATION": "2",
+  "STATION": "1",
   "CONTACTMETHOD": "3",
   "BILLINGCYCLEDAY": "255",
   "DOMAINNAME": "default1",

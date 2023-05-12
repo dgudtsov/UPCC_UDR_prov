@@ -19,18 +19,18 @@ then
 		mkdir $DIR
 fi
 
-for INPUT in ${INPUT}/*.txt
+for INPUT in ${INPUT}/*.txt.gz
 do
 
 	echo processing $INPUT
 
-	NAME=`basename $INPUT .txt`
+	NAME=`basename $INPUT .txt.gz`
 
 	OUTPUT=${DIR}/${NAME}_csv.txt.gz
 	SLAVE=${DIR}/Slave_${NAME}_csv.txt.gz
 	MASTER=${DIR}/Master_${NAME}_csv.txt.gz
 
-	time cat $INPUT | sed ':a;N;$!ba;s/;\n/;/g;s/<SUBEND//g'  |grep SID= | gzip >$OUTPUT
+	time zcat $INPUT | sed ':a;N;$!ba;s/;\n/;/g;s/<SUBEND//g'  |grep SID= | gzip >$OUTPUT
     
 	echo generating $SLAVE
 	zcat $OUTPUT | grep STATION=2 | gzip >$SLAVE &
