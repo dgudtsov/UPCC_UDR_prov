@@ -46,7 +46,7 @@ from asyncio.log import logger
 __all__ = []
 __version__ = 0.8
 __date__ = '2023-01-05'
-__updated__ = '2023-05-12'
+__updated__ = '2023-05-16'
 
 DEBUG = 0
 TESTRUN = 0
@@ -579,7 +579,11 @@ class UPCC_Subscriber(object):
                     
                     quota_volume = 0
                     
-                    Q_INITIAL, Q_BALANCE, Q_CONSUMPTION = int(instance['INITIALVALUE']), int(instance['BALANCE']), int(instance['CONSUMPTION'])
+                    try:
+                        Q_INITIAL, Q_BALANCE, Q_CONSUMPTION = int(instance['INITIALVALUE']), int(instance['BALANCE']), int(instance['CONSUMPTION'])
+                    except:
+                        self.error("quota conversion error for "+instance['QUOTANAME'])
+                        continue
                     
                     # is not virtual quota 
                     if instance['QUOTAFLAG']=="0":
