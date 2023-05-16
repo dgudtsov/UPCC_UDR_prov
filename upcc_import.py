@@ -407,8 +407,8 @@ class UPCC_Subscriber(object):
             if self.profile[upcc2profile_mappings['STATION']] == upcc_STATION_mapping['2']:
                 if self.profile[upcc2profile_mappings['SID']] in SID_IMSI:
                     self.profile[upcc2profile_mappings['STATION']] = SID_IMSI[self.profile[upcc2profile_mappings['SID']]]
-                    self.logger.debug('Slave = Master SID = %s', self.profile[upcc2profile_mappings['SID']])
-                    self.logger.debug('Profile: %s', json.dumps(self.profile, indent=None, default=str))
+                    if verbose>0:
+                        self.debug("Slave = Master")
                 else:
                     self.debug('Slave has no Master')
             
@@ -528,7 +528,6 @@ class UPCC_Subscriber(object):
                                 self.attrs['QUOTA'].append( dict(QUOTANAME=q,CONSUMPTION=0) )
 #                    else:
 #                        print("Error: SERVICENAME is not found in quota mapping: "+subscription['SERVICENAME'])
-                    
             
             # remove duplicated entitlements
                 self.profile[upcc_SUBSCRIPTION_mapping['SERVICENAME']] = list(dict.fromkeys(self.profile[upcc_SUBSCRIPTION_mapping['SERVICENAME']]))
@@ -558,8 +557,6 @@ class UPCC_Subscriber(object):
                             break
                     if skip_quota:
                         continue
-
-                    
                     
                     # means virtual quota, on slaves only
                     if instance['QUOTAFLAG']=="1":
@@ -1060,7 +1057,7 @@ USAGE
                                         # Extract
                                         subs = UPCC_Subscriber (subscriber_rows)
                                         if verbose>0:
-                                            logger.debug(json.dumps(subs.attrs, indent=None, default=str))
+                                            subs.debug("Subscriber profile dump ")
                                         
                                         # Transform
                                         if subs.mapping() :
