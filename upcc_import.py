@@ -451,6 +451,10 @@ class UPCC_Subscriber(object):
                 
                 # for each package
                 for pkg in self.attrs['PKGSUBSCRIPTION']:
+                    
+                    if len(pkg['PKGNAME'])<2:
+                        self.warn('PKGNAME is empty, skipping')
+                        continue
 
                     # mapping service to Tier
                     self.profile[upcc_PKGSUBSCRIPTION_mapping['PKGNAME']].add(pkg['PKGNAME'])
@@ -482,7 +486,10 @@ class UPCC_Subscriber(object):
                 self.profile[upcc_SUBSCRIPTION_mapping['SRVSTATUS_Frozen']] = list()
                 
                 for subscription in self.attrs['SUBSCRIPTION'] :
-
+                    
+                    if len(subscription['SERVICENAME'])<2:
+                        self.warn('SERVICENAME is empty, skipping')
+                        continue
                     
 #                    if subscription['EXPIREDATETIME'] !="FFFFFFFFFFFFFF" and subscription['SERVICENAME'] in omit_expire_services:
                     if subscription['SERVICENAME'] in omit_expire_services:
@@ -548,9 +555,12 @@ class UPCC_Subscriber(object):
                                               
                 for instance in self.attrs['QUOTA']:
                     
-                    skip_quota=False
+                    if len(instance['QUOTANAME'])<2:
+                        self.warn('Quota name is empty, skipping')
+                        continue
                     
                     # skip quota mapping
+                    skip_quota=False
                     for omit_service in omit_expire_services:
                         if instance['QUOTANAME'].startswith(omit_service) or instance['QUOTANAME'].startswith(master_quota_prefix+omit_service):
                             skip_quota = True
