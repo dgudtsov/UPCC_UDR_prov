@@ -44,9 +44,9 @@ from upcc_servicequota import servicequota
 from asyncio.log import logger
 
 __all__ = []
-__version__ = 0.8
+__version__ = 0.9
 __date__ = '2023-01-05'
-__updated__ = '2023-05-16'
+__updated__ = '2023-05-18'
 
 DEBUG = 0
 TESTRUN = 0
@@ -442,7 +442,7 @@ class UPCC_Subscriber(object):
                     self.error('Duplicate SID-IMSI pair')
         
         #PKGSUBSCRIPTION to SUBSCRIPTION mapping
-#TODO: map SERVICEPACKAGE to Tier 
+ 
         if 'PKGSUBSCRIPTION' in self.attrs: 
             if len(self.attrs['PKGSUBSCRIPTION'])>0 :
                 
@@ -1096,10 +1096,19 @@ USAGE
                                             else:
                                                 xml_result += subs.export_profile(xml_template['create_subs'])
 
-# TODO: remove quota with clone- prefix from subscribers profiles                                             
                                                 xml_result += subs.export_quota(subs.quota, xml_template['create_quota'], xml_template['quota_usage'])
-                                                xml_result += subs.export_quota(subs.topup_quota, xml_template['create_dquota'], xml_template['topup_quota'])
-                                                xml_result += subs.export_quota(subs.pass_quota, xml_template['create_dquota'], xml_template['pass_quota'])
+                                                
+                                                top_up_quota = subs.export_quota(subs.topup_quota, xml_template['create_dquota'], xml_template['topup_quota'])
+                                                if len(top_up_quota) > 0:
+                                                    xml_result += top_up_quota
+                                                    
+                                                    pass_quota = subs.export_quota(subs.pass_quota, xml_template['update_dquota'], xml_template['pass_quota'])
+                                                    xml_result += pass_quota 
+                                                    
+                                                    if len(pass_quota) >0:
+                                                        subs.debug('top-up+pass:')
+                                                else:
+                                                    xml_result += subs.export_quota(subs.pass_quota, xml_template['create_dquota'], xml_template['pass_quota'])
                                             
                                             # if subs is master, then create pool
                                             if subs.is_master():

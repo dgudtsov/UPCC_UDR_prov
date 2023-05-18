@@ -104,6 +104,29 @@ xml_template_dyn_quota="""
 </txRequest>
 """.replace("\n", "")
 
+xml_template_update_dyn_quota="""
+<txRequest id="1">
+<updateFieldSet createEntityIfNotExist="true" create="true">
+<key>
+<IMSI>{IMSI}</IMSI>
+</key>
+<entity>
+<data>
+<name>DynamicQuota</name>
+<interface>XMLIMPORT</interface>
+<xpath>/definition</xpath>
+</data>
+<content>
+<![CDATA[<?xml version="1.0" encoding="UTF-8"?>
+{QUOTA}
+]]>
+</content>
+</entity>
+</updateFieldSet>
+</txRequest>
+""".replace("\n", "")
+
+
 # static (regular) quota usage definition
 xml_template_quota_usage="""
 <quota name="{QUOTA}">
@@ -269,6 +292,7 @@ xml_template = {
     ,'create_subs' : xml_template_subs
     ,'create_quota' : xml_template_quota
     ,'create_dquota' : xml_template_dyn_quota
+    ,'update_dquota' : xml_template_update_dyn_quota
     ,'quota_usage' : xml_template_quota_usage
     ,'topup_quota' : xml_template_quota_topup
     ,'pass_quota' : xml_template_quota_pass
