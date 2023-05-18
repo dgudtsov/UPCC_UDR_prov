@@ -131,11 +131,19 @@ xml_template_update_dyn_quota="""
 xml_template_quota_usage="""
 <quota name="{QUOTA}">
 <totalVolume>{VOLUME}</totalVolume>
-<Type>quota</Type>
+<Type>{TYPE}</Type>
 </quota>
 """.replace("\n", "")
 
 # Dynamic Quota configuration definition (usage is defined the same way as regular quota)
+xml_template_quota_dyn="""
+<DynamicQuota name="{QUOTA}">
+<InstanceId>{INSTANCE}</InstanceId>
+<Type>{TYPE}</Type>
+<InitialTotalVolume>{VOLUME}</InitialTotalVolume>
+</DynamicQuota>
+""".replace("\n", "")
+
 xml_template_quota_topup="""
 <DynamicQuota name="{QUOTA}">
 <InstanceId>{INSTANCE}</InstanceId>
@@ -294,6 +302,7 @@ xml_template = {
     ,'create_dquota' : xml_template_dyn_quota
     ,'update_dquota' : xml_template_update_dyn_quota
     ,'quota_usage' : xml_template_quota_usage
+    ,'dyn_quota' : xml_template_quota_dyn
     ,'topup_quota' : xml_template_quota_topup
     ,'pass_quota' : xml_template_quota_pass
     ,'replace_subs': xml_template_replace_subs

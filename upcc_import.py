@@ -171,6 +171,10 @@ vquota_prefix='v'
 # quota size multiplier (1000 or 1024)
 quota_mult = 1000
 
+quota_type_topup = 'top-up'
+quota_type_pass = 'pass'
+quota_type_def = 'quota'
+
 # global errors counter
 errors_count = 0
 errors_stat = dict()
@@ -201,10 +205,8 @@ class UPCC_Subscriber(object):
 # stores mapped quota parameters         
         self.quota = list()
 
-# top-up modifiers        
-        self.topup_quota = list()
-        
-        self.pass_quota = list()
+# quota modifiers        
+        self.dyn_quota = list()
 
 # stores mapped udr profile
         self.profile=dict()
@@ -623,6 +625,7 @@ class UPCC_Subscriber(object):
                         # add prefix to quota name
                         quota['QUOTA'] = quota_prefix+instance['QUOTANAME']
                         quota['VOLUME'] = quota_volume*quota_mult
+                        quota['TYPE'] = quota_type_def
                         
                         self.quota.append(quota)
                         
@@ -632,13 +635,15 @@ class UPCC_Subscriber(object):
                             topup_quota['QUOTA'] = topup_quota['INSTANCE'] = quota['QUOTA']
     #                        topup_quota['INSTANCE'] += str(random.randrange(100000,999999))
                             topup_quota['VOLUME'] *= quota_mult
-                            self.topup_quota.append(topup_quota)  
+                            topup_quota['TYPE'] = quota_type_topup
+                            self.dyn_quota.append(topup_quota)  
                     
                     # virtual quota
                     elif instance['QUOTAFLAG']=="1":
                         pass_quota['QUOTA'] = pass_quota['INSTANCE'] = vquota_prefix+instance['QUOTANAME']
                         pass_quota['VOLUME'] = Q_BALANCE * quota_mult
-                        self.pass_quota.append(pass_quota)
+                        pass_quota['TYPE'] = quota_type_pass
+                        self.dyn_quota.append(pass_quota)
         
         return True
     
@@ -657,7 +662,8 @@ class UPCC_Subscriber(object):
                 xml_quota_usage += template_quota_usage.format( #REQ = i,
                                                   QUOTA = q['QUOTA'],
                                                   VOLUME = q['VOLUME'],
-                                                  INSTANCE = q['QUOTA']+"_"+str(random.randrange(100000,999999))
+                                                  INSTANCE = q['QUOTA']+"_"+str(random.randrange(100000,999999)),
+                                                  TYPE = q['TYPE']
                                                   # InstanceId = <QNAME>_RAND(6) 
                                                   )
             
@@ -748,7 +754,7 @@ class Pool(UPCC_Subscriber):
         self.quota = list()
 
         # top-up modifiers
-        self.topup_quota = list()
+        self.dyn_quota = list()
 
         # stores mapped udr profile
         self.profile=dict()
@@ -767,7 +773,7 @@ class Pool(UPCC_Subscriber):
         
         self.logger = logging.getLogger(__name__)
         
-        pass
+        return
     
     def mapping(self, subs):
 
@@ -785,7 +791,7 @@ class Pool(UPCC_Subscriber):
         self.quota = [ quota for quota in subs.quota if quota['QUOTA'].startswith(quota_prefix+master_quota_prefix) ]
         
         # dynquota from subs to pool
-        self.topup_quota = [ topup_quota for topup_quota in subs.topup_quota if topup_quota['QUOTA'].startswith(quota_prefix+master_quota_prefix)]
+        self.dyn_quota = [ dyn_quota for dyn_quota in subs.dyn_quota if dyn_quota['QUOTA'].startswith(quota_prefix+master_quota_prefix) and dyn_quota['TYPE'] == quota_type_topup]
     ###
         
         # just to keep continuance
@@ -806,18 +812,6 @@ class Pool(UPCC_Subscriber):
 #        print (xml_ent_result)
         
         return
-    
-    def add_slave(self,subscriber):
-        '''
-        Add slave subscriber into pool
-        Input: UPCC_Subscriber instance of class
-        '''
-        
-        # add CLONE-* subscription to pool
-        
-        # add CLONE-* quota to pool
-        
-        pass
 
 class CLIError(Exception):
     '''Generic exception to raise and log different fatal errors.'''
@@ -1095,20 +1089,21 @@ USAGE
                                                 xml_result += subs.export_profile(xml_template['delete_subs'])
                                             else:
                                                 xml_result += subs.export_profile(xml_template['create_subs'])
-
                                                 xml_result += subs.export_quota(subs.quota, xml_template['create_quota'], xml_template['quota_usage'])
+                                                xml_result += subs.export_quota(subs.dyn_quota, xml_template['create_dquota'], xml_template['dyn_quota'])
+
                                                 
-                                                top_up_quota = subs.export_quota(subs.topup_quota, xml_template['create_dquota'], xml_template['topup_quota'])
-                                                if len(top_up_quota) > 0:
-                                                    xml_result += top_up_quota
-                                                    
-                                                    pass_quota = subs.export_quota(subs.pass_quota, xml_template['update_dquota'], xml_template['pass_quota'])
-                                                    xml_result += pass_quota 
-                                                    
-                                                    if len(pass_quota) >0:
-                                                        subs.debug('top-up+pass:')
-                                                else:
-                                                    xml_result += subs.export_quota(subs.pass_quota, xml_template['create_dquota'], xml_template['pass_quota'])
+                                                # top_up_quota = subs.export_quota(subs.topup_quota, xml_template['create_dquota'], xml_template['topup_quota'])
+                                                # if len(top_up_quota) > 0:
+                                                #     xml_result += top_up_quota
+                                                #
+                                                #     pass_quota = subs.export_quota(subs.pass_quota, xml_template['update_dquota'], xml_template['pass_quota'])
+                                                #     xml_result += pass_quota 
+                                                #
+                                                #     if len(pass_quota) >0:
+                                                #         subs.debug('top-up+pass:')
+                                                # else:
+                                                #     xml_result += subs.export_quota(subs.pass_quota, xml_template['create_dquota'], xml_template['pass_quota'])
                                             
                                             # if subs is master, then create pool
                                             if subs.is_master():
@@ -1129,7 +1124,7 @@ USAGE
                                                     xml_result += pool.export_profile(xml_template['pool_member'])
                                                     
                                                     xml_result_pool += pool.export_quota(pool.quota, xml_template['pool_quota'], xml_template['quota_usage'])
-                                                    xml_result_pool += pool.export_quota(pool.topup_quota, xml_template['pool_dquota'], xml_template['topup_quota'])
+                                                    xml_result_pool += pool.export_quota(pool.dyn_quota, xml_template['pool_dquota'], xml_template['dyn_quota'])
                                                 
                                                     xml_result_pool += xml_template_end_transact
                                                 
