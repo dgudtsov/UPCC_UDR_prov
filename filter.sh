@@ -26,18 +26,18 @@ do
 
 	NAME=`basename $INPUT .txt`
 
-	OUTPUT=${DIR}/${NAME}_csv.txt.gz
-	SLAVE=${DIR}/Slave_${NAME}_csv.txt.gz
-	MASTER=${DIR}/Master_${NAME}_csv.txt.gz
+	OUTPUT=${DIR}/${NAME}_csv.txt
+	SLAVE=${DIR}/Slave_${NAME}_csv.txt
+	MASTER=${DIR}/Master_${NAME}_csv.txt
 
-	time cat $INPUT | sed ':a;N;$!ba;s/;\n/;/g;s/<SUBEND//g'  |grep SID= | gzip >$OUTPUT
+	time cat $INPUT | sed ':a;N;$!ba;s/;\n/;/g;s/<SUBEND//g'  |grep SID= >$OUTPUT
     
 	echo generating $SLAVE
-	zcat $OUTPUT | grep STATION=2 | gzip >$SLAVE &
+	cat $OUTPUT | grep STATION=2 >$SLAVE &
 	PID=$!
 		
 	echo generating $MASTER
-	time zcat $OUTPUT | grep STATION=1 | gzip >$MASTER
+	time cat $OUTPUT | grep STATION=1 >$MASTER
 
 	wait $PID
 

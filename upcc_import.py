@@ -1,4 +1,4 @@
-#!/usr/local/bin/python3
+#!/usr/bin/python3
 # encoding: utf-8
 '''
 upcc_import -- converter from Huawei UPCC export files into Oracle UDR bulk import file
@@ -44,9 +44,9 @@ from upcc_servicequota import servicequota
 from asyncio.log import logger
 
 __all__ = []
-__version__ = 0.9
+__version__ = 1.0
 __date__ = '2023-01-05'
-__updated__ = '2023-05-18'
+__updated__ = '2023-05-24'
 
 DEBUG = 0
 TESTRUN = 0
@@ -63,7 +63,7 @@ default_chunk_size=1000000
 import_dir='./csv'
 
 # only files ends with this suffix will be imported
-input_file_suffix='.txt.gz'
+input_file_suffix='.txt'
 
 # default output dir for ixml
 default_output_dir='./output/'
@@ -71,7 +71,7 @@ default_output_dir='./output/'
 # output ixml file name format
 filename_prefix='i_'
 filename_prefix_pool='i_pool_'
-filename_suffix='.ixml.gz'
+filename_suffix='.ixml'
 
 #logging
 logFilePath = "./log/export.log"
@@ -973,7 +973,7 @@ USAGE
         
         logger.info("pool dumping to: "+filename_prefix_pool+str(timestamp)+filename_suffix)
         if not test:
-            f_pool = gzip.open(output_dir+filename_prefix_pool+str(timestamp)+filename_suffix, 'at')
+            f_pool = open(output_dir+filename_prefix_pool+str(timestamp)+filename_suffix, 'at')
         
         for inpath in paths:
             logger.info("processing "+inpath)
@@ -987,7 +987,7 @@ USAGE
                 
                         logger.info("loading: "+inp)
                         
-                        with gzip.open(inpath+"/"+inp, 'rt') as f_inp:
+                        with open(inpath+"/"+inp, 'rt') as f_inp:
                             
                             while True:
                                 
@@ -1047,7 +1047,7 @@ USAGE
                                         
                                         if not test:
                                         # and start a new one
-                                            f_out = gzip.open(output_dir+filename_prefix+str(timestamp)+filename_suffix, 'at')
+                                            f_out = open(output_dir+filename_prefix+str(timestamp)+filename_suffix, 'at')
                                     
                                     if len(subscriber_rows)>0:
                                     
