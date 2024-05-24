@@ -132,6 +132,7 @@ xml_template_quota_usage="""
 <quota name="{QUOTA}">
 <totalVolume>{VOLUME}</totalVolume>
 <Type>{TYPE}</Type>
+<serviceSpecific>{ADDTIME}</serviceSpecific>
 </quota>
 """.replace("\n", "")
 
@@ -141,6 +142,7 @@ xml_template_quota_dyn="""
 <InstanceId>{INSTANCE}</InstanceId>
 <Type>{TYPE}</Type>
 <InitialTotalVolume>{VOLUME}</InitialTotalVolume>
+<purchasedatetime>{ADDTIME}</purchasedatetime>
 </DynamicQuota>
 """.replace("\n", "")
 
@@ -149,6 +151,7 @@ xml_template_quota_topup="""
 <InstanceId>{INSTANCE}</InstanceId>
 <Type>top-up</Type>
 <InitialTotalVolume>{VOLUME}</InitialTotalVolume>
+<purchasedatetime>{ADDTIME}</purchasedatetime>
 </DynamicQuota>
 """.replace("\n", "")
 
@@ -157,6 +160,7 @@ xml_template_quota_pass="""
 <InstanceId>{INSTANCE}</InstanceId>
 <Type>pass</Type>
 <InitialTotalVolume>{VOLUME}</InitialTotalVolume>
+<purchasedatetime>{ADDTIME}</purchasedatetime>
 </DynamicQuota>
 """.replace("\n", "")
 
