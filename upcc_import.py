@@ -609,12 +609,21 @@ class UPCC_Subscriber(object):
                         self.error("quota LASTRESETDATETIME error for "+instance['QUOTANAME'])
                         continue                     
                     
-                    Q_LASTRESETDATETIME_OBJ = datetime.strptime(Q_LASTRESETDATETIME, '%Y%m%d%H%M%S') # Mazur24052024
-                    
+
+                    Q_LASTRESETDATETIME_STUB = "FF"
+
+                    # Mazur28052024
+                    if Q_LASTRESETDATETIME_STUB not in Q_LASTRESETDATETIME:
+                      Q_LASTRESETDATETIME_OBJ = datetime.strptime(Q_LASTRESETDATETIME, '%Y%m%d%H%M%S')
+                    else:
+                      nowdt = datetime.now()
+                      Q_LASTRESETDATETIME_OBJ = nowdt.strftime("%Y%m%d%H%M%S")
+                      Q_LASTRESETDATETIME_OBJ = datetime.strptime(Q_LASTRESETDATETIME_OBJ, '%Y%m%d%H%M%S')
+
+
                     Q_LASTRESETDATETIME_OBJ_TS = round(datetime.timestamp(Q_LASTRESETDATETIME_OBJ)) # Mazur24052024 (Plan quota: serviceSpecific)
-                    
                     Q_LASTRESETDATETIME_OBJ_STR = Q_LASTRESETDATETIME_OBJ.strftime('%Y-%m-%dT%H:%M:%S') # Mazur24052024 (Pass/Top-Up Dynamic quota: purchasedatetime)
-                    
+
                     
                     # is not virtual quota 
                     if instance['QUOTAFLAG']=="0":
