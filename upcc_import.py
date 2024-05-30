@@ -17,6 +17,10 @@ It defines classes_and_methods
 @deffield    updated: Updated
 '''
 
+'''
+All strings with "Mazur24052024" comments - storing time in quota field (serviceSpecific for Plan Quota, purchasedatetime for all Dynamic Quota (Pass and Plan))
+'''
+
 import sys
 import os
 import time
@@ -42,6 +46,9 @@ from upcc_import_template import *
 from upcc_pkgsubscription import pkgsubscription
 from upcc_servicequota import servicequota
 from asyncio.log import logger
+
+from datetime import datetime #Mazur24052024
+import time #Mazur24052024
 
 __all__ = []
 __version__ = 1.0
@@ -93,7 +100,7 @@ fields_names={
 multi_fields = ('SUBSCRIBERGRPNAME','SUBSCRIPTION','PKGSUBSCRIPTION','QUOTA','ACCOUNT')
 
 # set of services to omit from export if EXPIREDATETIME or Auto-Provisioning is defined
-omit_expire_services= {'406792','406793','Default_Service_Redirect_T2','Default_Service_Jysan','Default_Service_FWA','Default_Service_T2','Default_Service','Default_Signalling_Service','ims_service_default_sig','ims_service_af_dedicate','ims_service_dedicate_audio','ims_service_dedicate_video'}
+omit_expire_services= {'406792','406793','Default_Service_Redirect_T2','Default_Service_Jysan','Default_Service_FWA','Default_Service_T2','Default_Service','Default_Signalling_Service','ims_service_default_sig','ims_service_af_dedicate','ims_service_dedicate_audio','ims_service_dedicate_video','Default_Service_Abibas'}
 
 tag_begin = "<SUBBEGIN"
 tag_end = "<SUBEND"
@@ -594,6 +601,30 @@ class UPCC_Subscriber(object):
                         self.error("quota conversion error for "+instance['QUOTANAME'])
                         continue
                     
+                    
+                    # Mazur24052024
+                    try:
+                        Q_LASTRESETDATETIME = instance['LASTRESETDATETIME']
+                    except:
+                        self.error("quota LASTRESETDATETIME error for "+instance['QUOTANAME'])
+                        continue                     
+                    
+
+                    Q_LASTRESETDATETIME_STUB = "FF"
+
+                    # Mazur28052024
+                    if Q_LASTRESETDATETIME_STUB not in Q_LASTRESETDATETIME:
+                      Q_LASTRESETDATETIME_OBJ = datetime.strptime(Q_LASTRESETDATETIME, '%Y%m%d%H%M%S')
+                    else:
+                      nowdt = datetime.now()
+                      Q_LASTRESETDATETIME_OBJ = nowdt.strftime("%Y%m%d%H%M%S")
+                      Q_LASTRESETDATETIME_OBJ = datetime.strptime(Q_LASTRESETDATETIME_OBJ, '%Y%m%d%H%M%S')
+
+
+                    Q_LASTRESETDATETIME_OBJ_TS = round(datetime.timestamp(Q_LASTRESETDATETIME_OBJ)) # Mazur24052024 (Plan quota: serviceSpecific)
+                    Q_LASTRESETDATETIME_OBJ_STR = Q_LASTRESETDATETIME_OBJ.strftime('%Y-%m-%dT%H:%M:%S') # Mazur24052024 (Pass/Top-Up Dynamic quota: purchasedatetime)
+
+                    
                     # is not virtual quota 
                     if instance['QUOTAFLAG']=="0":
                     
@@ -626,6 +657,7 @@ class UPCC_Subscriber(object):
                         quota['QUOTA'] = quota_prefix+instance['QUOTANAME']
                         quota['VOLUME'] = quota_volume*quota_mult
                         quota['TYPE'] = quota_type_def
+                        quota['ADDTIME'] = Q_LASTRESETDATETIME_OBJ_TS # Mazur24052024
                         
                         self.quota.append(quota)
                         
@@ -636,6 +668,7 @@ class UPCC_Subscriber(object):
     #                        topup_quota['INSTANCE'] += str(random.randrange(100000,999999))
                             topup_quota['VOLUME'] *= quota_mult
                             topup_quota['TYPE'] = quota_type_topup
+                            topup_quota['ADDTIME'] = Q_LASTRESETDATETIME_OBJ_STR # Mazur24052024
                             self.dyn_quota.append(topup_quota)  
                     
                     # virtual quota
@@ -643,6 +676,7 @@ class UPCC_Subscriber(object):
                         pass_quota['QUOTA'] = pass_quota['INSTANCE'] = vquota_prefix+instance['QUOTANAME']
                         pass_quota['VOLUME'] = Q_BALANCE * quota_mult
                         pass_quota['TYPE'] = quota_type_pass
+                        pass_quota['ADDTIME'] = Q_LASTRESETDATETIME_OBJ_STR # Mazur24052024
                         self.dyn_quota.append(pass_quota)
         
         return True
@@ -663,7 +697,8 @@ class UPCC_Subscriber(object):
                                                   QUOTA = q['QUOTA'],
                                                   VOLUME = q['VOLUME'],
                                                   INSTANCE = q['QUOTA']+"_"+str(random.randrange(100000,999999)),
-                                                  TYPE = q['TYPE']
+                                                  TYPE = q['TYPE'],
+                                                  ADDTIME = q['ADDTIME'] # Mazur24052024
                                                   # InstanceId = <QNAME>_RAND(6) 
                                                   )
             
