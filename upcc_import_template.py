@@ -4,6 +4,10 @@ Created on 6 янв. 2023 г.
 @author: denis
 '''
 
+'''
+03/2025 - <InitialServiceSpecific>1</InitialServiceSpecific> Add to xml_template_quota_pass for vQuota persistent
+'''
+
 # =CONCAT("<field name=";B1;">";"{";B1;"}";"</field>")
 
 xml_template_custom="""
@@ -161,6 +165,7 @@ xml_template_quota_pass="""
 <Type>pass</Type>
 <InitialTotalVolume>{VOLUME}</InitialTotalVolume>
 <purchasedatetime>{ADDTIME}</purchasedatetime>
+<InitialServiceSpecific>{SSPECIFIC}</InitialServiceSpecific>
 </DynamicQuota>
 """.replace("\n", "")
 

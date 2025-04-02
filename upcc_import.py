@@ -9,7 +9,7 @@ It defines classes_and_methods
 
 @author:     Denis Gudtsov
 
-@copyright:  2023 Jet Infosystems. All rights reserved.
+@copyright:  2023-2025 Jet Infosystems. All rights reserved.
 
 @license:    Apache
 
@@ -51,9 +51,9 @@ from datetime import datetime #Mazur24052024
 import time #Mazur24052024
 
 __all__ = []
-__version__ = 1.0
+__version__ = 1.1
 __date__ = '2023-01-05'
-__updated__ = '2023-05-24'
+__updated__ = '2025-04-02'
 
 DEBUG = 0
 TESTRUN = 0
@@ -71,6 +71,8 @@ import_dir='./csv'
 
 # only files ends with this suffix will be imported
 input_file_suffix='.txt'
+input_file_suffix_txt='.txt'
+input_file_suffix_gz='.txt.gz'
 
 # default output dir for ixml
 default_output_dir='./output/'
@@ -176,7 +178,7 @@ quota_prefix=''
 vquota_prefix='v'
 
 # quota size multiplier (1000 or 1024)
-quota_mult = 1000
+quota_mult = 1024
 
 quota_type_topup = 'top-up'
 quota_type_pass = 'pass'
@@ -677,6 +679,7 @@ class UPCC_Subscriber(object):
                         pass_quota['VOLUME'] = Q_BALANCE * quota_mult
                         pass_quota['TYPE'] = quota_type_pass
                         pass_quota['ADDTIME'] = Q_LASTRESETDATETIME_OBJ_STR # Mazur24052024
+                        pass_quota['SSPECIFIC'] = 1 # Mazur24052024 (02042025)
                         self.dyn_quota.append(pass_quota)
         
         return True
@@ -918,6 +921,8 @@ USAGE
         
         parser.add_argument("-t", "--test", dest="test", action="count", help="test import, without writing output result [default: %(default)s]", default=None)
         
+        parser.add_argument("-z", "--gzip", dest="gzip", action="count", help="use .txt.gz as input [default: %(default)s]", default=None)
+        
 #        parser.add_argument(dest="paths", action='append', help="paths to folder(s) with source file(s) [default: %(default)s]", metavar="path", nargs='*', default=import_dir)
         parser.add_argument(dest="paths", help="paths to folder(s) with source file(s) [default: %(default)s]", metavar="path", nargs='*', default=import_dir)
 
@@ -934,6 +939,7 @@ USAGE
         test = args.test
         action = args.action
         use_cache = args.cache
+        gz = args.gzip
         
         output_dir = args.output_dir
         
@@ -944,6 +950,11 @@ USAGE
             formatter = logging.Formatter('[%(asctime)s :TEST-RUN: %(levelname)s] %(message)s')
         else:
             formatter = logging.Formatter('[%(asctime)s: %(levelname)s] %(message)s')
+            
+        if gz>0:
+            input_file_suffix=input_file_suffix_gz
+        else:
+            input_file_suffix=input_file_suffix_txt 
         
         #console
         handler = StreamHandler(stream=sys.stdout)
@@ -1022,7 +1033,7 @@ USAGE
                 
                         logger.info("loading: "+inp)
                         
-                        with open(inpath+"/"+inp, 'rt') as f_inp:
+                        with gzip.open(inpath+"/"+inp, 'rt') if gz>0 else open(inpath+"/"+inp, 'rt')  as f_inp:
                             
                             while True:
                                 
