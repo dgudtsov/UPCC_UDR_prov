@@ -70,9 +70,10 @@ default_chunk_size=1000000
 import_dir='./csv'
 
 # only files ends with this suffix will be imported
-input_file_suffix='.txt'
 input_file_suffix_txt='.txt'
-input_file_suffix_gz='.txt.gz'
+input_file_suffix_gz=input_file_suffix_txt+'.gz'
+
+input_file_suffix = input_file_suffix_txt
 
 # default output dir for ixml
 default_output_dir='./output/'
@@ -660,6 +661,8 @@ class UPCC_Subscriber(object):
                         quota['VOLUME'] = quota_volume*quota_mult
                         quota['TYPE'] = quota_type_def
                         quota['ADDTIME'] = Q_LASTRESETDATETIME_OBJ_TS # Mazur24052024
+                        #stub
+                        quota['SSPECIFIC'] = None
                         
                         self.quota.append(quota)
                         
@@ -671,6 +674,8 @@ class UPCC_Subscriber(object):
                             topup_quota['VOLUME'] *= quota_mult
                             topup_quota['TYPE'] = quota_type_topup
                             topup_quota['ADDTIME'] = Q_LASTRESETDATETIME_OBJ_STR # Mazur24052024
+                            #stub
+                            topup_quota['SSPECIFIC'] = None
                             self.dyn_quota.append(topup_quota)  
                     
                     # virtual quota
@@ -701,7 +706,8 @@ class UPCC_Subscriber(object):
                                                   VOLUME = q['VOLUME'],
                                                   INSTANCE = q['QUOTA']+"_"+str(random.randrange(100000,999999)),
                                                   TYPE = q['TYPE'],
-                                                  ADDTIME = q['ADDTIME'] # Mazur24052024
+                                                  ADDTIME = q['ADDTIME'], # Mazur24052024
+                                                  SSPECIFIC = q['SSPECIFIC']
                                                   # InstanceId = <QNAME>_RAND(6) 
                                                   )
             
@@ -851,6 +857,165 @@ class Pool(UPCC_Subscriber):
         
         return
 
+def processing(subscriber_rows,action):
+    
+    global errors_count
+    
+    global SID_IMSI
+    global IMSI_Pool
+    
+    global MSISDN_min
+    global MSISDN_max
+    global IMSI_min
+    global IMSI_max
+    
+    global use_cache
+    
+    global verbose
+
+    # Extract
+    subs = UPCC_Subscriber (subscriber_rows)
+    if verbose>0:
+        subs.debug("Subscriber profile dump ")
+    
+    # Transform
+    if subs.mapping() :
+        
+        if int(subs.profile['IMSI']) > IMSI_max: IMSI_max = int(subs.profile['IMSI'])  
+        if int(subs.profile['IMSI']) < IMSI_min: IMSI_min = int(subs.profile['IMSI'])
+    
+        if int(subs.profile['MSISDN']) > MSISDN_max: MSISDN_max = int(subs.profile['MSISDN'])  
+        if int(subs.profile['MSISDN']) < MSISDN_min: MSISDN_min = int(subs.profile['MSISDN'])
+
+        # Load
+        # xml_template_begin_transact + xml_profile + xml_quota + xml_topup_quota + xml_template_end_transact
+        xml_result = xml_template_begin_transact
+        xml_result_pool = ""
+        
+        pool = Pool()
+        pool.mapping(subs)
+        
+        subs.clean()
+        
+        # (if_test_is_false, if_test_is_true)[test]
+#                                            xml_result += subs.export_profile(xml_template[ ('delete_subs','create_subs')[action == 'create'] ])
+        
+        if action == 'delete':
+            xml_result += subs.export_profile(xml_template['delete_subs'])
+        else:
+            xml_result += subs.export_profile(xml_template['create_subs'])
+            xml_result += subs.export_quota(subs.quota, xml_template['create_quota'], xml_template['quota_usage'])
+# moving into master and slave sections
+#            xml_result += subs.export_quota(subs.dyn_quota, xml_template['create_dquota'], xml_template['dyn_quota'])
+
+            
+            # top_up_quota = subs.export_quota(subs.topup_quota, xml_template['create_dquota'], xml_template['topup_quota'])
+            # if len(top_up_quota) > 0:
+            #     xml_result += top_up_quota
+            #
+            #     pass_quota = subs.export_quota(subs.pass_quota, xml_template['update_dquota'], xml_template['pass_quota'])
+            #     xml_result += pass_quota 
+            #
+            #     if len(pass_quota) >0:
+            #         subs.debug('top-up+pass:')
+            # else:
+            #     xml_result += subs.export_quota(subs.pass_quota, xml_template['create_dquota'], xml_template['pass_quota'])
+        
+        # if subs is master, then create pool
+        if subs.is_master():
+            
+            # pool = Pool()
+            # pool.mapping(subs)
+            
+            #IMSI_Pool[subs.get_master()] = "1"
+            IMSI_Pool.add(subs.get_master())
+            
+            if action == 'create':
+                # from common to master- and slave- specific quota template 
+                xml_result += subs.export_quota(subs.dyn_quota, xml_template['create_dquota'], xml_template['dyn_quota'])
+                
+                xml_result_pool = xml_template_begin_transact
+                
+                # create pool and add master as first member
+                xml_result_pool += pool.export_profile(xml_template['create_pool'])
+                
+                xml_result += pool.export_profile(xml_template['pool_member'])
+                
+                xml_result_pool += pool.export_quota(pool.quota, xml_template['pool_quota'], xml_template['quota_usage'])
+                xml_result_pool += pool.export_quota(pool.dyn_quota, xml_template['pool_dquota'], xml_template['dyn_quota'])
+            
+                xml_result_pool += xml_template_end_transact
+            
+            else: # delete
+                xml_result_pool = xml_template_begin_transact
+                
+                xml_result += pool.export_profile(xml_template['pool_member_delete'])
+                xml_result_pool += pool.export_profile(xml_template['delete_pool'])
+                
+                xml_result_pool += xml_template_end_transact
+            
+        # if subs is slave, add him into pool
+        elif subs.has_master():
+            
+            if action == 'create':
+                # from common to master- and slave- specific quota template 
+                xml_result += subs.export_quota(subs.dyn_quota, xml_template['create_dquota'], xml_template['dyn_quota_slave'])
+            
+            # pool = Pool()
+            # pool.mapping(subs)
+            
+            # check if pool has not been created for master, then create it from slave
+            # the only issue is: slave doesn't has SUBSCRIPTION=CLONE-*
+            
+            if subs.get_master() not in IMSI_Pool:
+                logger.debug("Creating Pool from Slave SID = %s ", str(subs.profile[upcc2profile_mappings['SID']]))
+
+                xml_result_pool = xml_template_begin_transact
+
+                if action == 'delete':
+#                                                        xml_result += pool.export_profile(xml_template['pool_member_delete'])
+                    xml_result += pool.export_profile(xml_template['pool_master_delete'])
+                    xml_result_pool += pool.export_profile(xml_template['delete_pool'])
+                else:                                                    
+                    # create pool and add master as first member
+                    xml_result_pool += pool.export_profile(xml_template['create_pool'])
+                    
+                    xml_result += pool.export_profile(xml_template['pool_member_master'])
+                    
+                    #IMSI_Pool[subs.get_master()] = "1"
+                IMSI_Pool.add(subs.get_master())
+                    
+                xml_result_pool += xml_template_end_transact
+            
+            if action == 'create':
+                xml_result += pool.export_profile(xml_template['pool_member'])
+            else:
+                xml_result += pool.export_profile(xml_template['pool_member_delete'])
+                
+                # virtual quotas on slave, QUOTAFLAG = 1
+                # # Pool Quota modifiers from slaves ?
+                # pool_quota = ""
+                # pool_quota += pool.export_quota(pool.quota, xml_template['pool_quota'], xml_template['quota_usage'])
+                # pool_quota += pool.export_quota(pool.topup_quota, xml_template['pool_dquota'], xml_template['topup_quota'])
+                #
+                # if len(pool_quota)>0:
+                #     xml_result_pool = xml_template_begin_transact + pool_quota + xml_template_end_transact 
+            
+        del pool
+        
+        xml_result += xml_template_end_transact
+        
+        #xml_result =subs.export(xml_template['create_subs'])
+        if verbose>0: 
+            logger.debug (xml_result)
+            logger.debug (xml_result_pool)
+    
+    
+        return xml_result,xml_result_pool
+    
+    #if not mapped return none
+    return None,None
+
 class CLIError(Exception):
     '''Generic exception to raise and log different fatal errors.'''
     def __init__(self, msg):
@@ -891,7 +1056,7 @@ def main(argv=None): # IGNORE:C0111
     program_license = '''%s
 
   Created by Denis Gudtsov on %s.
-  Copyright 2023 Jet Infosystems. All rights reserved.
+  Copyright 2023-2025 Jet Infosystems. All rights reserved.
 
   Licensed under the Apache License 2.0
   http://www.apache.org/licenses/LICENSE-2.0
@@ -921,7 +1086,7 @@ USAGE
         
         parser.add_argument("-t", "--test", dest="test", action="count", help="test import, without writing output result [default: %(default)s]", default=None)
         
-        parser.add_argument("-z", "--gzip", dest="gzip", action="count", help="use .txt.gz as input [default: %(default)s]", default=None)
+        parser.add_argument("-z", "--gzip", dest="gzip", action="count", help="use .txt.gz as input [default: %(default)s]", default=0)
         
 #        parser.add_argument(dest="paths", action='append', help="paths to folder(s) with source file(s) [default: %(default)s]", metavar="path", nargs='*', default=import_dir)
         parser.add_argument(dest="paths", help="paths to folder(s) with source file(s) [default: %(default)s]", metavar="path", nargs='*', default=import_dir)
@@ -1104,155 +1269,165 @@ USAGE
                                             #logger.info("processed records: %s", str(export_records_count))
                                             logger.info("processed records: %s", '{:,}'.format(export_records_count))
                                         
-                                        # Extract
-                                        subs = UPCC_Subscriber (subscriber_rows)
-                                        if verbose>0:
-                                            subs.debug("Subscriber profile dump ")
+#                                         # Extract
+#                                         subs = UPCC_Subscriber (subscriber_rows)
+#                                         if verbose>0:
+#                                             subs.debug("Subscriber profile dump ")
+#
+#                                         # Transform
+#                                         if subs.mapping() :
+#
+#                                             if int(subs.profile['IMSI']) > IMSI_max: IMSI_max = int(subs.profile['IMSI'])  
+#                                             if int(subs.profile['IMSI']) < IMSI_min: IMSI_min = int(subs.profile['IMSI'])
+#
+#                                             if int(subs.profile['MSISDN']) > MSISDN_max: MSISDN_max = int(subs.profile['MSISDN'])  
+#                                             if int(subs.profile['MSISDN']) < MSISDN_min: MSISDN_min = int(subs.profile['MSISDN'])
+#
+#                                             # Load
+#                                             # xml_template_begin_transact + xml_profile + xml_quota + xml_topup_quota + xml_template_end_transact
+#                                             xml_result = xml_template_begin_transact
+#                                             xml_result_pool = ""
+#
+#                                             pool = Pool()
+#                                             pool.mapping(subs)
+#
+#                                             subs.clean()
+#
+#                                             # (if_test_is_false, if_test_is_true)[test]
+# #                                            xml_result += subs.export_profile(xml_template[ ('delete_subs','create_subs')[action == 'create'] ])
+#
+#                                             if action == 'delete':
+#                                                 xml_result += subs.export_profile(xml_template['delete_subs'])
+#                                             else:
+#                                                 xml_result += subs.export_profile(xml_template['create_subs'])
+#                                                 xml_result += subs.export_quota(subs.quota, xml_template['create_quota'], xml_template['quota_usage'])
+#                                                 xml_result += subs.export_quota(subs.dyn_quota, xml_template['create_dquota'], xml_template['dyn_quota'])
+#
+#
+#                                                 # top_up_quota = subs.export_quota(subs.topup_quota, xml_template['create_dquota'], xml_template['topup_quota'])
+#                                                 # if len(top_up_quota) > 0:
+#                                                 #     xml_result += top_up_quota
+#                                                 #
+#                                                 #     pass_quota = subs.export_quota(subs.pass_quota, xml_template['update_dquota'], xml_template['pass_quota'])
+#                                                 #     xml_result += pass_quota 
+#                                                 #
+#                                                 #     if len(pass_quota) >0:
+#                                                 #         subs.debug('top-up+pass:')
+#                                                 # else:
+#                                                 #     xml_result += subs.export_quota(subs.pass_quota, xml_template['create_dquota'], xml_template['pass_quota'])
+#
+#                                             # if subs is master, then create pool
+#                                             if subs.is_master():
+#
+#                                                 # pool = Pool()
+#                                                 # pool.mapping(subs)
+#
+#                                                 #IMSI_Pool[subs.get_master()] = "1"
+#                                                 IMSI_Pool.add(subs.get_master())
+#
+#                                                 if action == 'create':
+#
+#                                                     xml_result_pool = xml_template_begin_transact
+#
+#                                                     # create pool and add master as first member
+#                                                     xml_result_pool += pool.export_profile(xml_template['create_pool'])
+#
+#                                                     xml_result += pool.export_profile(xml_template['pool_member'])
+#
+#                                                     xml_result_pool += pool.export_quota(pool.quota, xml_template['pool_quota'], xml_template['quota_usage'])
+#                                                     xml_result_pool += pool.export_quota(pool.dyn_quota, xml_template['pool_dquota'], xml_template['dyn_quota'])
+#
+#                                                     xml_result_pool += xml_template_end_transact
+#
+#                                                 else: # delete
+#                                                     xml_result_pool = xml_template_begin_transact
+#
+#                                                     xml_result += pool.export_profile(xml_template['pool_member_delete'])
+#                                                     xml_result_pool += pool.export_profile(xml_template['delete_pool'])
+#
+#                                                     xml_result_pool += xml_template_end_transact
+#
+#                                             # if subs is slave, add him into pool
+#                                             elif subs.has_master():
+#
+#                                                 # pool = Pool()
+#                                                 # pool.mapping(subs)
+#
+#                                                 # check if pool has not been created for master, then create it from slave
+#                                                 # the only issue is: slave doesn't has SUBSCRIPTION=CLONE-*
+#
+#                                                 if subs.get_master() not in IMSI_Pool:
+#                                                     logger.debug("Creating Pool from Slave SID = %s ", str(subs.profile[upcc2profile_mappings['SID']]))
+#
+#                                                     xml_result_pool = xml_template_begin_transact
+#
+#                                                     if action == 'delete':
+# #                                                        xml_result += pool.export_profile(xml_template['pool_member_delete'])
+#                                                         xml_result += pool.export_profile(xml_template['pool_master_delete'])
+#                                                         xml_result_pool += pool.export_profile(xml_template['delete_pool'])
+#                                                     else:                                                    
+#                                                         # create pool and add master as first member
+#                                                         xml_result_pool += pool.export_profile(xml_template['create_pool'])
+#
+#                                                         xml_result += pool.export_profile(xml_template['pool_member_master'])
+#
+#                                                         #IMSI_Pool[subs.get_master()] = "1"
+#                                                     IMSI_Pool.add(subs.get_master())
+#
+#                                                     xml_result_pool += xml_template_end_transact
+#
+#                                                 if action == 'create':
+#                                                     xml_result += pool.export_profile(xml_template['pool_member'])
+#                                                 else:
+#                                                     xml_result += pool.export_profile(xml_template['pool_member_delete'])
+#
+#                                                     # virtual quotas on slave, QUOTAFLAG = 1
+#                                                     # # Pool Quota modifiers from slaves ?
+#                                                     # pool_quota = ""
+#                                                     # pool_quota += pool.export_quota(pool.quota, xml_template['pool_quota'], xml_template['quota_usage'])
+#                                                     # pool_quota += pool.export_quota(pool.topup_quota, xml_template['pool_dquota'], xml_template['topup_quota'])
+#                                                     #
+#                                                     # if len(pool_quota)>0:
+#                                                     #     xml_result_pool = xml_template_begin_transact + pool_quota + xml_template_end_transact 
+#
+#                                             del pool
+#
+#                                             xml_result += xml_template_end_transact
+#
+#                                             #xml_result =subs.export(xml_template['create_subs'])
+#                                             if verbose>0: 
+#                                                 logger.debug (xml_result)
+#                                                 logger.debug (xml_result_pool)
+#
+#                                             if not test:
+#                                                 f_out.write("%s\n" % xml_result)
+#
+#                                                 if len(xml_result_pool)>0:
+#                                                     f_pool.write("%s\n" % xml_result_pool)
+#
+#                                             # # Pool
+#                                             # if subs.has_master():
+#                                             #     master_imsi = subs.get_master()
+#                                             #
+#                                             #     if master_imsi not in IMSI_Pool:
+#                                             #         IMSI_Pool[master_imsi] = Pool(subs.get_master())
+#                                             #
+#                                             #     pool = IMSI_Pool[master_imsi]
+#                                             #
+#                                             #     pool.add_slave(subs)
+#
+#
+#                                         del subs
                                         
-                                        # Transform
-                                        if subs.mapping() :
-                                            
-                                            if int(subs.profile['IMSI']) > IMSI_max: IMSI_max = int(subs.profile['IMSI'])  
-                                            if int(subs.profile['IMSI']) < IMSI_min: IMSI_min = int(subs.profile['IMSI'])
-                                        
-                                            if int(subs.profile['MSISDN']) > MSISDN_max: MSISDN_max = int(subs.profile['MSISDN'])  
-                                            if int(subs.profile['MSISDN']) < MSISDN_min: MSISDN_min = int(subs.profile['MSISDN'])
-            
-                                            # Load
-                                            # xml_template_begin_transact + xml_profile + xml_quota + xml_topup_quota + xml_template_end_transact
-                                            xml_result = xml_template_begin_transact
-                                            xml_result_pool = ""
-                                            
-                                            pool = Pool()
-                                            pool.mapping(subs)
-                                            
-                                            subs.clean()
-                                            
-                                            # (if_test_is_false, if_test_is_true)[test]
-#                                            xml_result += subs.export_profile(xml_template[ ('delete_subs','create_subs')[action == 'create'] ])
-                                            
-                                            if action == 'delete':
-                                                xml_result += subs.export_profile(xml_template['delete_subs'])
-                                            else:
-                                                xml_result += subs.export_profile(xml_template['create_subs'])
-                                                xml_result += subs.export_quota(subs.quota, xml_template['create_quota'], xml_template['quota_usage'])
-                                                xml_result += subs.export_quota(subs.dyn_quota, xml_template['create_dquota'], xml_template['dyn_quota'])
-
-                                                
-                                                # top_up_quota = subs.export_quota(subs.topup_quota, xml_template['create_dquota'], xml_template['topup_quota'])
-                                                # if len(top_up_quota) > 0:
-                                                #     xml_result += top_up_quota
-                                                #
-                                                #     pass_quota = subs.export_quota(subs.pass_quota, xml_template['update_dquota'], xml_template['pass_quota'])
-                                                #     xml_result += pass_quota 
-                                                #
-                                                #     if len(pass_quota) >0:
-                                                #         subs.debug('top-up+pass:')
-                                                # else:
-                                                #     xml_result += subs.export_quota(subs.pass_quota, xml_template['create_dquota'], xml_template['pass_quota'])
-                                            
-                                            # if subs is master, then create pool
-                                            if subs.is_master():
-                                                
-                                                # pool = Pool()
-                                                # pool.mapping(subs)
-                                                
-                                                #IMSI_Pool[subs.get_master()] = "1"
-                                                IMSI_Pool.add(subs.get_master())
-                                                
-                                                if action == 'create':
-                                                    
-                                                    xml_result_pool = xml_template_begin_transact
-                                                    
-                                                    # create pool and add master as first member
-                                                    xml_result_pool += pool.export_profile(xml_template['create_pool'])
-                                                    
-                                                    xml_result += pool.export_profile(xml_template['pool_member'])
-                                                    
-                                                    xml_result_pool += pool.export_quota(pool.quota, xml_template['pool_quota'], xml_template['quota_usage'])
-                                                    xml_result_pool += pool.export_quota(pool.dyn_quota, xml_template['pool_dquota'], xml_template['dyn_quota'])
-                                                
-                                                    xml_result_pool += xml_template_end_transact
-                                                
-                                                else: # delete
-                                                    xml_result_pool = xml_template_begin_transact
-                                                    
-                                                    xml_result += pool.export_profile(xml_template['pool_member_delete'])
-                                                    xml_result_pool += pool.export_profile(xml_template['delete_pool'])
-                                                    
-                                                    xml_result_pool += xml_template_end_transact
-                                                
-                                            # if subs is slave, add him into pool
-                                            elif subs.has_master():
-                                                
-                                                # pool = Pool()
-                                                # pool.mapping(subs)
-                                                
-                                                # check if pool has not been created for master, then create it from slave
-                                                # the only issue is: slave doesn't has SUBSCRIPTION=CLONE-*
-                                                
-                                                if subs.get_master() not in IMSI_Pool:
-                                                    logger.debug("Creating Pool from Slave SID = %s ", str(subs.profile[upcc2profile_mappings['SID']]))
-
-                                                    xml_result_pool = xml_template_begin_transact
-
-                                                    if action == 'delete':
-#                                                        xml_result += pool.export_profile(xml_template['pool_member_delete'])
-                                                        xml_result += pool.export_profile(xml_template['pool_master_delete'])
-                                                        xml_result_pool += pool.export_profile(xml_template['delete_pool'])
-                                                    else:                                                    
-                                                        # create pool and add master as first member
-                                                        xml_result_pool += pool.export_profile(xml_template['create_pool'])
-                                                        
-                                                        xml_result += pool.export_profile(xml_template['pool_member_master'])
-                                                        
-                                                        #IMSI_Pool[subs.get_master()] = "1"
-                                                    IMSI_Pool.add(subs.get_master())
-                                                        
-                                                    xml_result_pool += xml_template_end_transact
-                                                
-                                                if action == 'create':
-                                                    xml_result += pool.export_profile(xml_template['pool_member'])
-                                                else:
-                                                    xml_result += pool.export_profile(xml_template['pool_member_delete'])
-                                                    
-                                                    # virtual quotas on slave, QUOTAFLAG = 1
-                                                    # # Pool Quota modifiers from slaves ?
-                                                    # pool_quota = ""
-                                                    # pool_quota += pool.export_quota(pool.quota, xml_template['pool_quota'], xml_template['quota_usage'])
-                                                    # pool_quota += pool.export_quota(pool.topup_quota, xml_template['pool_dquota'], xml_template['topup_quota'])
-                                                    #
-                                                    # if len(pool_quota)>0:
-                                                    #     xml_result_pool = xml_template_begin_transact + pool_quota + xml_template_end_transact 
-                                                
-                                            del pool
-                                            
-                                            xml_result += xml_template_end_transact
-                                            
-                                            #xml_result =subs.export(xml_template['create_subs'])
-                                            if verbose>0: 
-                                                logger.debug (xml_result)
-                                                logger.debug (xml_result_pool)
-                
-                                            if not test:
+                                        # new compact form
+                                        xml_result,xml_result_pool = processing(subscriber_rows, action)
+                                        if not test:
+                                            if xml_result is not None:                                            
                                                 f_out.write("%s\n" % xml_result)
-                                                
+                                            
+                                            if xml_result_pool is not None:
                                                 if len(xml_result_pool)>0:
                                                     f_pool.write("%s\n" % xml_result_pool)
-                                                
-                                            # # Pool
-                                            # if subs.has_master():
-                                            #     master_imsi = subs.get_master()
-                                            #
-                                            #     if master_imsi not in IMSI_Pool:
-                                            #         IMSI_Pool[master_imsi] = Pool(subs.get_master())
-                                            #
-                                            #     pool = IMSI_Pool[master_imsi]
-                                            #
-                                            #     pool.add_slave(subs)
-                                
-                                        
-                                        del subs
                                         
                                 # wait for next subs record
                                 subscriber_begin=False
