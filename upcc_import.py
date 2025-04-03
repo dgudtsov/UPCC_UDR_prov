@@ -319,6 +319,13 @@ class UPCC_Subscriber(object):
         # default
         return False
     
+    def is_not_slave(self):
+        
+        if self.profile[upcc2profile_mappings['STATION']] == upcc_STATION_mapping['1']:
+            return True 
+        
+        return False
+    
     def is_master(self):
         '''
         Returns True if this subscriber is master and has one of 'Clone-*' quotas is defined OR subscription with 'Clone-*' is defined  
@@ -409,283 +416,290 @@ class UPCC_Subscriber(object):
         # example: [{'QUOTA': '409239-DATA_D_Quota', 'VOLUME': '65013247'}, {'QUOTA': '40777900081-DATA_D_Quota', 'USAGE': '865069'}, {'QUOTA': '413102-DATA_D_Quota', 'USAGE': '0'}]
         '''
         
-        # map all attributes were defined in upcc2profile_mappings
-        [ self.profile.update({upcc2profile_mappings[k]:self.attrs[k]}) for k in self.attrs if k in upcc2profile_mappings ]
-        
-        if self.profile[upcc2profile_mappings['STATION']] in upcc_STATION_mapping:
-            self.profile[upcc2profile_mappings['STATION']] = upcc_STATION_mapping[self.profile[upcc2profile_mappings['STATION']]]
-            
-            # if slave
-            if self.profile[upcc2profile_mappings['STATION']] == upcc_STATION_mapping['2']:
-                if self.profile[upcc2profile_mappings['SID']] in SID_IMSI:
-                    self.profile[upcc2profile_mappings['STATION']] = SID_IMSI[self.profile[upcc2profile_mappings['SID']]]
-                    if verbose>0:
-                        self.debug("Slave = Master")
-                else:
-                    self.debug('Slave has no Master')
-            
-            # skip slaves without master
-                    return False
-        else:
-            self.error('Unknown Station ID')
-            return False
-        
-        # BillingDay normalization
         try:
-            if int(self.profile['BillingDay'])<0 or int(self.profile['BillingDay'])>31:  
-                raise ValueError
-        except:
-            self.profile['BillingDay'] = 0
-
-        # skip subs if there are no mandatory fields are refined
-        if 'IMSI' not in self.profile:
-            self.error('IMSI is missing for profile')
-            return False
-        if 'MSISDN' not in self.profile:
-            self.debug('MSISDN is missing for profile')
-            return False         
         
-        # populate SID_IMSI dict with masters
-        if self.profile[upcc2profile_mappings['STATION']] == upcc_STATION_mapping['1'] :
-            if self.profile[upcc2profile_mappings['SID']] not in SID_IMSI:
-                SID_IMSI[self.profile[upcc2profile_mappings['SID']]] = self.profile[upcc2profile_mappings['SUBSCRIBERIDENTIFIER']]
+            # map all attributes were defined in upcc2profile_mappings
+            [ self.profile.update({upcc2profile_mappings[k]:self.attrs[k]}) for k in self.attrs if k in upcc2profile_mappings ]
+            
+            if self.profile[upcc2profile_mappings['STATION']] in upcc_STATION_mapping:
+                self.profile[upcc2profile_mappings['STATION']] = upcc_STATION_mapping[self.profile[upcc2profile_mappings['STATION']]]
+                
+                # if slave
+                if self.profile[upcc2profile_mappings['STATION']] == upcc_STATION_mapping['2']:
+                    if self.profile[upcc2profile_mappings['SID']] in SID_IMSI:
+                        self.profile[upcc2profile_mappings['STATION']] = SID_IMSI[self.profile[upcc2profile_mappings['SID']]]
+                        if verbose>0:
+                            self.debug("Slave = Master")
+                    else:
+                        self.debug('Slave has no Master')
+                
+                # skip slaves without master
+                        return False
             else:
-                if not use_cache:
-                    self.error('Duplicate SID-IMSI pair')
-        
-        #PKGSUBSCRIPTION to SUBSCRIPTION mapping
- 
-        if 'PKGSUBSCRIPTION' in self.attrs: 
-            if len(self.attrs['PKGSUBSCRIPTION'])>0 :
-                
-                # Tier
-                self.profile[upcc_PKGSUBSCRIPTION_mapping['PKGNAME']] = set()
-                
-                # for each package
-                for pkg in self.attrs['PKGSUBSCRIPTION']:
-                    
-                    if len(pkg['PKGNAME'])<2:
-                        self.warn('PKGNAME is empty, skipping')
-                        continue
-
-                    # mapping service to Tier
-                    self.profile[upcc_PKGSUBSCRIPTION_mapping['PKGNAME']].add(pkg['PKGNAME'])
-                    
-                    if pkg['PKGNAME'].startswith(master_quota_prefix) and self.profile[upcc2profile_mappings['STATION']] == upcc_STATION_mapping['1'] :
-                        self.__is_master__ = True
-                    
-                    # using pkgsubscription imported from upcc_pkgsubscription module
-                    if pkg['PKGNAME'] in pkgsubscription:
-                        # get list of services assigned to package
-                        servicenames = pkgsubscription[pkg['PKGNAME']]
-                         
-                        # appending original SUBSCRIPTION list with synthetic values from package 
-                        for s in servicenames:
-                            self.attrs['SUBSCRIPTION'].append( dict(SERVICENAME=s) )  
-                        
-                    else:
-                        #print("Error: PKGSUBSCRIPTION is not found: "+pkg['PKGNAME'])
-                        pass
-        
-        # SUBSCRIPTION to Entitlement mapping
-        if 'SUBSCRIPTION' in self.attrs: 
-            if len(self.attrs['SUBSCRIPTION'])>0 :
-                
-                # Entitlement
-                self.profile[upcc_SUBSCRIPTION_mapping['SERVICENAME']] = list()
-                
-                # Custom18
-                self.profile[upcc_SUBSCRIPTION_mapping['SRVSTATUS_Frozen']] = list()
-                
-                for subscription in self.attrs['SUBSCRIPTION'] :
-                    
-                    if len(subscription['SERVICENAME'])<2:
-                        self.warn('SERVICENAME is empty, skipping')
-                        continue
-                    
-#                    if subscription['EXPIREDATETIME'] !="FFFFFFFFFFFFFF" and subscription['SERVICENAME'] in omit_expire_services:
-                    if subscription['SERVICENAME'] in omit_expire_services:
-                        # skip service mapping
-                        continue
-                    
-                    # mapping service to entitlement
-                    self.profile[upcc_SUBSCRIPTION_mapping['SERVICENAME']].append(subscription['SERVICENAME'])
-
-#                        if subscription['SERVICENAME'] in omit_expire_services:
-#                            self.logger.info("EXPIREDATETIME for service %s SID = %s",subscription , self.attrs['SID'])
-                        
-#                        if verbose>0:
-#                            self.logger.debug("EXPIREDATETIME SID = %s",self.attrs['SID'])
-#                            self.logger.debug('Profile: %s', json.dumps(subscription, indent=None, default=str))
-                        
-                    
-                    # as subscriber has SUBSCRIPTION=CLONE-* then assign them master marker
-                    if subscription['SERVICENAME'].startswith(master_quota_prefix) and self.profile[upcc2profile_mappings['STATION']] == upcc_STATION_mapping['1'] :
-                        self.__is_master__ = True
-                    
-                    #SRVSTATUS = 1 (Frozen)
-                    if 'SRVSTATUS' in subscription:
-                        if subscription['SRVSTATUS'] == SRVSTATUS_Frozen:
-#                            print ("frozen: " + self.profile['IMSI'] )
-                            self.profile[upcc_SUBSCRIPTION_mapping['SRVSTATUS_Frozen']].append(subscription['SERVICENAME'])
-                    
-                    #mapping service to quota
-                    if subscription['SERVICENAME'] in servicequota:
-                        # get quota for service
-#                        q = servicequota[subscription['SERVICENAME']]
-                        quotas = servicequota[subscription['SERVICENAME']]
-                        
-                        for q in quotas: 
-                            # check if quota is already assigned
-                            q_assign=False
-                            for instance in self.attrs['QUOTA']:
-                                if q==instance['QUOTANAME']:
-                                    q_assign=True
-                                    break
-                            
-                            if not q_assign:
-                                self.attrs['QUOTA'].append( dict(QUOTANAME=q,CONSUMPTION=0) )
-#                    else:
-#                        print("Error: SERVICENAME is not found in quota mapping: "+subscription['SERVICENAME'])
+                self.error('Unknown Station ID')
+                return False
             
-            # remove duplicated entitlements
-                self.profile[upcc_SUBSCRIPTION_mapping['SERVICENAME']] = list(dict.fromkeys(self.profile[upcc_SUBSCRIPTION_mapping['SERVICENAME']]))
-            # remove duplicated frozen services                
-                self.profile[upcc_SUBSCRIPTION_mapping['SRVSTATUS_Frozen']] = list(dict.fromkeys(self.profile[upcc_SUBSCRIPTION_mapping['SRVSTATUS_Frozen']]))
+            # BillingDay normalization
+            try:
+                if int(self.profile['BillingDay'])<0 or int(self.profile['BillingDay'])>31:  
+                    raise ValueError
+            except:
+                self.profile['BillingDay'] = 0
+    
+            # skip subs if there are no mandatory fields are refined
+            if 'IMSI' not in self.profile:
+                self.error('IMSI is missing for profile')
+                return False
+            if 'MSISDN' not in self.profile:
+                self.debug('MSISDN is missing for profile')
+                return False         
             
-            # map list into string
-                if len(self.profile[upcc_SUBSCRIPTION_mapping['SRVSTATUS_Frozen']])>0:
-                    self.profile[upcc_SUBSCRIPTION_mapping['SRVSTATUS_Frozen']] = ';'.join(self.profile[upcc_SUBSCRIPTION_mapping['SRVSTATUS_Frozen']])
+            # populate SID_IMSI dict with masters
+            if self.profile[upcc2profile_mappings['STATION']] == upcc_STATION_mapping['1'] :
+                if self.profile[upcc2profile_mappings['SID']] not in SID_IMSI:
+                    SID_IMSI[self.profile[upcc2profile_mappings['SID']]] = self.profile[upcc2profile_mappings['SUBSCRIBERIDENTIFIER']]
                 else:
-                #remove key
-                    del self.profile[upcc_SUBSCRIPTION_mapping['SRVSTATUS_Frozen']]   
-                
-        
-        # Quota mapping
-        if 'QUOTA' in self.attrs:
-            if len(self.attrs['QUOTA'])>0 :
-                                              
-                for instance in self.attrs['QUOTA']:
+                    if not use_cache:
+                        self.error('Duplicate SID-IMSI pair')
+            
+            #PKGSUBSCRIPTION to SUBSCRIPTION mapping
+     
+            if 'PKGSUBSCRIPTION' in self.attrs: 
+                if len(self.attrs['PKGSUBSCRIPTION'])>0 :
                     
-                    if len(instance['QUOTANAME'])<2:
-                        self.warn('Quota name is empty, skipping')
-                        continue
+                    # Tier
+                    self.profile[upcc_PKGSUBSCRIPTION_mapping['PKGNAME']] = set()
                     
-                    # skip quota mapping
-                    skip_quota=False
-                    for omit_service in omit_expire_services:
-                        if instance['QUOTANAME'].startswith(omit_service) or instance['QUOTANAME'].startswith(master_quota_prefix+omit_service):
-                            skip_quota = True
-                            break
-                    if skip_quota:
-                        continue
-                    
-                    # means virtual quota, on slaves only
-                    if instance['QUOTAFLAG']=="1":
-                        if self.profile[upcc2profile_mappings['STATION']] == upcc_STATION_mapping['1']:
-                            self.warn("QUOTAFLAG=1 for master")
-                    
-                    # if subs is master the store imsi in hash sid-imsi
-#                    if instance['QUOTANAME'].startswith(master_quota_prefix) and self.profile[upcc2profile_mappings['STATION']] == upcc_STATION_mapping['1'] :
-#                        SID_IMSI[self.profile[upcc2profile_mappings['SID']]] = self.profile[upcc2profile_mappings['SUBSCRIBERIDENTIFIER']]
-
-                    if instance['QUOTANAME'].startswith(master_quota_prefix) and self.profile[upcc2profile_mappings['STATION']] == upcc_STATION_mapping['1']:
-                        self.__is_master__ = True
-#                    if instance['QUOTANAME'].startswith(master_quota_prefix): self.__is_master__ = True
-                    
-                    # define new dict and transfer there fields from self.attrs 
-                    quota, topup_quota, pass_quota = dict(), dict(), dict() 
-                    
-                    quota_volume = 0
-                    
-                    try:
-                        Q_INITIAL, Q_BALANCE, Q_CONSUMPTION = int(instance['INITIALVALUE']), int(instance['BALANCE']), int(instance['CONSUMPTION'])
-                    except:
-                        self.error("quota conversion error for "+instance['QUOTANAME'])
-                        continue
-                    
-                    
-                    # Mazur24052024
-                    try:
-                        Q_LASTRESETDATETIME = instance['LASTRESETDATETIME']
-                    except:
-                        self.error("quota LASTRESETDATETIME error for "+instance['QUOTANAME'])
-                        continue                     
-                    
-
-                    Q_LASTRESETDATETIME_STUB = "FF"
-
-                    # Mazur28052024
-                    if Q_LASTRESETDATETIME_STUB not in Q_LASTRESETDATETIME:
-                      Q_LASTRESETDATETIME_OBJ = datetime.strptime(Q_LASTRESETDATETIME, '%Y%m%d%H%M%S')
-                    else:
-                      nowdt = datetime.now()
-                      Q_LASTRESETDATETIME_OBJ = nowdt.strftime("%Y%m%d%H%M%S")
-                      Q_LASTRESETDATETIME_OBJ = datetime.strptime(Q_LASTRESETDATETIME_OBJ, '%Y%m%d%H%M%S')
-
-
-                    Q_LASTRESETDATETIME_OBJ_TS = round(datetime.timestamp(Q_LASTRESETDATETIME_OBJ)) # Mazur24052024 (Plan quota: serviceSpecific)
-                    Q_LASTRESETDATETIME_OBJ_STR = Q_LASTRESETDATETIME_OBJ.strftime('%Y-%m-%dT%H:%M:%S') # Mazur24052024 (Pass/Top-Up Dynamic quota: purchasedatetime)
-
-                    
-                    # is not virtual quota 
-                    if instance['QUOTAFLAG']=="0":
-                    
-                        # BALANCE + CONSUPTION <= INITIAL
-                        if Q_BALANCE + Q_CONSUMPTION <= Q_INITIAL:
-                            quota_volume = Q_INITIAL - Q_BALANCE
+                    # for each package
+                    for pkg in self.attrs['PKGSUBSCRIPTION']:
                         
-                        # BALANCE + CONSUPTION > INITIAL
-                        # CONSUMPTION >= INITIAL
-                        elif Q_CONSUMPTION >= Q_INITIAL:
+                        if len(pkg['PKGNAME'])<2:
+                            self.warn('PKGNAME is empty, skipping')
+                            continue
+    
+                        # mapping service to Tier
+                        self.profile[upcc_PKGSUBSCRIPTION_mapping['PKGNAME']].add(pkg['PKGNAME'])
                         
-                            quota_volume = Q_CONSUMPTION
+                        if pkg['PKGNAME'].startswith(master_quota_prefix) and self.profile[upcc2profile_mappings['STATION']] == upcc_STATION_mapping['1'] :
+                            self.__is_master__ = True
+                        
+                        # using pkgsubscription imported from upcc_pkgsubscription module
+                        if pkg['PKGNAME'] in pkgsubscription:
+                            # get list of services assigned to package
+                            servicenames = pkgsubscription[pkg['PKGNAME']]
+                             
+                            # appending original SUBSCRIPTION list with synthetic values from package 
+                            for s in servicenames:
+                                self.attrs['SUBSCRIPTION'].append( dict(SERVICENAME=s) )  
                             
-                            if Q_BALANCE>0:
-                               
-                               # top-up = BALANCE
-                               #topup_quota['USAGE'] = Q_INITIAL - Q_BALANCE 
-                               topup_quota['VOLUME'] = Q_BALANCE
-                            
-                        #elif Q_CONSUMPTION < Q_INITIAL:
-                        # CONSUMPTION < INITIAL
                         else:
-                            quota_volume = Q_CONSUMPTION
-                            
-                            # top-up = (BALANCE + CONSUMPTION – INITIAL)
-                            topup_quota['VOLUME'] = Q_BALANCE + Q_CONSUMPTION - Q_INITIAL
-                            
-                        
-                        # add prefix to quota name
-                        quota['QUOTA'] = quota_prefix+instance['QUOTANAME']
-                        quota['VOLUME'] = quota_volume*quota_mult
-                        quota['TYPE'] = quota_type_def
-                        quota['ADDTIME'] = Q_LASTRESETDATETIME_OBJ_TS # Mazur24052024
-                        #stub
-                        quota['SSPECIFIC'] = None
-                        
-                        self.quota.append(quota)
-                        
-                        if len(topup_quota)>0:
-                            
-                            #topup_quota['QUOTA'] = topup_quota['INSTANCE'] = quota_prefix+instance['QUOTANAME']
-                            topup_quota['QUOTA'] = topup_quota['INSTANCE'] = quota['QUOTA']
-    #                        topup_quota['INSTANCE'] += str(random.randrange(100000,999999))
-                            topup_quota['VOLUME'] *= quota_mult
-                            topup_quota['TYPE'] = quota_type_topup
-                            topup_quota['ADDTIME'] = Q_LASTRESETDATETIME_OBJ_STR # Mazur24052024
-                            #stub
-                            topup_quota['SSPECIFIC'] = None
-                            self.dyn_quota.append(topup_quota)  
+                            #print("Error: PKGSUBSCRIPTION is not found: "+pkg['PKGNAME'])
+                            pass
+            
+            # SUBSCRIPTION to Entitlement mapping
+            if 'SUBSCRIPTION' in self.attrs: 
+                if len(self.attrs['SUBSCRIPTION'])>0 :
                     
-                    # virtual quota
-                    elif instance['QUOTAFLAG']=="1":
-                        pass_quota['QUOTA'] = pass_quota['INSTANCE'] = vquota_prefix+instance['QUOTANAME']
-                        pass_quota['VOLUME'] = Q_BALANCE * quota_mult
-                        pass_quota['TYPE'] = quota_type_pass
-                        pass_quota['ADDTIME'] = Q_LASTRESETDATETIME_OBJ_STR # Mazur24052024
-                        pass_quota['SSPECIFIC'] = 1 # Mazur24052024 (02042025)
-                        self.dyn_quota.append(pass_quota)
+                    # Entitlement
+                    self.profile[upcc_SUBSCRIPTION_mapping['SERVICENAME']] = list()
+                    
+                    # Custom18
+                    self.profile[upcc_SUBSCRIPTION_mapping['SRVSTATUS_Frozen']] = list()
+                    
+                    for subscription in self.attrs['SUBSCRIPTION'] :
+                        
+                        if len(subscription['SERVICENAME'])<2:
+                            self.warn('SERVICENAME is empty, skipping')
+                            continue
+                        
+    #                    if subscription['EXPIREDATETIME'] !="FFFFFFFFFFFFFF" and subscription['SERVICENAME'] in omit_expire_services:
+                        if subscription['SERVICENAME'] in omit_expire_services:
+                            # skip service mapping
+                            continue
+                        
+                        # mapping service to entitlement
+                        self.profile[upcc_SUBSCRIPTION_mapping['SERVICENAME']].append(subscription['SERVICENAME'])
+    
+    #                        if subscription['SERVICENAME'] in omit_expire_services:
+    #                            self.logger.info("EXPIREDATETIME for service %s SID = %s",subscription , self.attrs['SID'])
+                            
+    #                        if verbose>0:
+    #                            self.logger.debug("EXPIREDATETIME SID = %s",self.attrs['SID'])
+    #                            self.logger.debug('Profile: %s', json.dumps(subscription, indent=None, default=str))
+                            
+                        
+                        # as subscriber has SUBSCRIPTION=CLONE-* then assign them master marker
+                        if subscription['SERVICENAME'].startswith(master_quota_prefix) and self.profile[upcc2profile_mappings['STATION']] == upcc_STATION_mapping['1'] :
+                            self.__is_master__ = True
+                        
+                        #SRVSTATUS = 1 (Frozen)
+                        if 'SRVSTATUS' in subscription:
+                            if subscription['SRVSTATUS'] == SRVSTATUS_Frozen:
+    #                            print ("frozen: " + self.profile['IMSI'] )
+                                self.profile[upcc_SUBSCRIPTION_mapping['SRVSTATUS_Frozen']].append(subscription['SERVICENAME'])
+                        
+                        #mapping service to quota
+                        if subscription['SERVICENAME'] in servicequota:
+                            # get quota for service
+    #                        q = servicequota[subscription['SERVICENAME']]
+                            quotas = servicequota[subscription['SERVICENAME']]
+                            
+                            for q in quotas: 
+                                # check if quota is already assigned
+                                q_assign=False
+                                for instance in self.attrs['QUOTA']:
+                                    if q==instance['QUOTANAME']:
+                                        q_assign=True
+                                        break
+                                
+                                if not q_assign:
+                                    self.attrs['QUOTA'].append( dict(QUOTANAME=q,CONSUMPTION=0) )
+    #                    else:
+    #                        print("Error: SERVICENAME is not found in quota mapping: "+subscription['SERVICENAME'])
+                
+                # remove duplicated entitlements
+                    self.profile[upcc_SUBSCRIPTION_mapping['SERVICENAME']] = list(dict.fromkeys(self.profile[upcc_SUBSCRIPTION_mapping['SERVICENAME']]))
+                # remove duplicated frozen services                
+                    self.profile[upcc_SUBSCRIPTION_mapping['SRVSTATUS_Frozen']] = list(dict.fromkeys(self.profile[upcc_SUBSCRIPTION_mapping['SRVSTATUS_Frozen']]))
+                
+                # map list into string
+                    if len(self.profile[upcc_SUBSCRIPTION_mapping['SRVSTATUS_Frozen']])>0:
+                        self.profile[upcc_SUBSCRIPTION_mapping['SRVSTATUS_Frozen']] = ';'.join(self.profile[upcc_SUBSCRIPTION_mapping['SRVSTATUS_Frozen']])
+                    else:
+                    #remove key
+                        del self.profile[upcc_SUBSCRIPTION_mapping['SRVSTATUS_Frozen']]   
+                    
+            
+            # Quota mapping
+            if 'QUOTA' in self.attrs:
+                if len(self.attrs['QUOTA'])>0 :
+                                                  
+                    for instance in self.attrs['QUOTA']:
+                        
+                        if len(instance['QUOTANAME'])<2:
+                            self.warn('Quota name is empty, skipping')
+                            continue
+                        
+                        # skip quota mapping
+                        skip_quota=False
+                        for omit_service in omit_expire_services:
+                            if instance['QUOTANAME'].startswith(omit_service) or instance['QUOTANAME'].startswith(master_quota_prefix+omit_service):
+                                skip_quota = True
+                                break
+                        if skip_quota:
+                            continue
+                        
+                        # means virtual quota, on slaves only
+                        if instance['QUOTAFLAG']=="1":
+                            if self.profile[upcc2profile_mappings['STATION']] == upcc_STATION_mapping['1']:
+                                self.warn("QUOTAFLAG=1 for master")
+                        
+                        # if subs is master the store imsi in hash sid-imsi
+    #                    if instance['QUOTANAME'].startswith(master_quota_prefix) and self.profile[upcc2profile_mappings['STATION']] == upcc_STATION_mapping['1'] :
+    #                        SID_IMSI[self.profile[upcc2profile_mappings['SID']]] = self.profile[upcc2profile_mappings['SUBSCRIBERIDENTIFIER']]
+    
+                        if instance['QUOTANAME'].startswith(master_quota_prefix) and self.profile[upcc2profile_mappings['STATION']] == upcc_STATION_mapping['1']:
+                            self.__is_master__ = True
+    #                    if instance['QUOTANAME'].startswith(master_quota_prefix): self.__is_master__ = True
+                        
+                        # define new dict and transfer there fields from self.attrs 
+                        quota, topup_quota, pass_quota = dict(), dict(), dict() 
+                        
+                        quota_volume = 0
+                        
+                        try:
+                            Q_INITIAL, Q_BALANCE, Q_CONSUMPTION = int(instance['INITIALVALUE']), int(instance['BALANCE']), int(instance['CONSUMPTION'])
+                        except:
+                            self.error("quota conversion error for "+instance['QUOTANAME'])
+                            continue
+                        
+                        
+                        # Mazur24052024
+                        try:
+                            Q_LASTRESETDATETIME = instance['LASTRESETDATETIME']
+                        except:
+                            self.error("quota LASTRESETDATETIME error for "+instance['QUOTANAME'])
+                            continue                     
+                        
+    
+                        Q_LASTRESETDATETIME_STUB = "FF"
+    
+                        # Mazur28052024
+                        if Q_LASTRESETDATETIME_STUB not in Q_LASTRESETDATETIME:
+                          Q_LASTRESETDATETIME_OBJ = datetime.strptime(Q_LASTRESETDATETIME, '%Y%m%d%H%M%S')
+                        else:
+                          nowdt = datetime.now()
+                          Q_LASTRESETDATETIME_OBJ = nowdt.strftime("%Y%m%d%H%M%S")
+                          Q_LASTRESETDATETIME_OBJ = datetime.strptime(Q_LASTRESETDATETIME_OBJ, '%Y%m%d%H%M%S')
+    
+    
+                        Q_LASTRESETDATETIME_OBJ_TS = round(datetime.timestamp(Q_LASTRESETDATETIME_OBJ)) # Mazur24052024 (Plan quota: serviceSpecific)
+                        Q_LASTRESETDATETIME_OBJ_STR = Q_LASTRESETDATETIME_OBJ.strftime('%Y-%m-%dT%H:%M:%S') # Mazur24052024 (Pass/Top-Up Dynamic quota: purchasedatetime)
+    
+                        
+                        # is not virtual quota 
+                        if instance['QUOTAFLAG']=="0":
+                        
+                            # BALANCE + CONSUPTION <= INITIAL
+                            if Q_BALANCE + Q_CONSUMPTION <= Q_INITIAL:
+                                quota_volume = Q_INITIAL - Q_BALANCE
+                            
+                            # BALANCE + CONSUPTION > INITIAL
+                            # CONSUMPTION >= INITIAL
+                            elif Q_CONSUMPTION >= Q_INITIAL:
+                            
+                                quota_volume = Q_CONSUMPTION
+                                
+                                if Q_BALANCE>0:
+                                   
+                                   # top-up = BALANCE
+                                   #topup_quota['USAGE'] = Q_INITIAL - Q_BALANCE 
+                                   topup_quota['VOLUME'] = Q_BALANCE
+                                
+                            #elif Q_CONSUMPTION < Q_INITIAL:
+                            # CONSUMPTION < INITIAL
+                            else:
+                                quota_volume = Q_CONSUMPTION
+                                
+                                # top-up = (BALANCE + CONSUMPTION – INITIAL)
+                                topup_quota['VOLUME'] = Q_BALANCE + Q_CONSUMPTION - Q_INITIAL
+                                
+                            
+                            # add prefix to quota name
+                            quota['QUOTA'] = quota_prefix+instance['QUOTANAME']
+                            quota['VOLUME'] = quota_volume*quota_mult
+                            quota['TYPE'] = quota_type_def
+                            quota['ADDTIME'] = Q_LASTRESETDATETIME_OBJ_TS # Mazur24052024
+                            #stub
+                            quota['SSPECIFIC'] = None
+                            
+                            self.quota.append(quota)
+                            
+                            if len(topup_quota)>0:
+                                
+                                #topup_quota['QUOTA'] = topup_quota['INSTANCE'] = quota_prefix+instance['QUOTANAME']
+                                topup_quota['QUOTA'] = topup_quota['INSTANCE'] = quota['QUOTA']
+        #                        topup_quota['INSTANCE'] += str(random.randrange(100000,999999))
+                                topup_quota['VOLUME'] *= quota_mult
+                                topup_quota['TYPE'] = quota_type_topup
+                                topup_quota['ADDTIME'] = Q_LASTRESETDATETIME_OBJ_STR # Mazur24052024
+                                #stub
+                                topup_quota['SSPECIFIC'] = None
+                                self.dyn_quota.append(topup_quota)  
+                        
+                        # virtual quota
+                        elif instance['QUOTAFLAG']=="1":
+                            pass_quota['QUOTA'] = pass_quota['INSTANCE'] = vquota_prefix+instance['QUOTANAME']
+                            pass_quota['VOLUME'] = Q_BALANCE * quota_mult
+                            pass_quota['TYPE'] = quota_type_pass
+                            pass_quota['ADDTIME'] = Q_LASTRESETDATETIME_OBJ_STR # Mazur24052024
+                            pass_quota['SSPECIFIC'] = 1 # Mazur24052024 (02042025)
+                            self.dyn_quota.append(pass_quota)
+            
+        except Exception as e:
+            if 'SID' in self.attrs:
+                sys.stderr.write("  error at SID = "+self.attrs['SID']+"\n")
+            raise(e)        
         
         return True
     
@@ -733,26 +747,32 @@ class UPCC_Subscriber(object):
         Export mapped profile into xml using templates
         '''
         
-        # generate xml set for custom fields
-        xml_custom_result=""
-        xml_custom_result="".join([xml_template_custom.format(Custom_Name=attr,Custom_Value=self.profile[attr]) for attr in self.profile if 'Custom' in attr])
-        
-        # generate xml set for entitlements fields
-        xml_ent_result = xml_tier_result = ""
-        
-        if upcc_SUBSCRIPTION_mapping['SERVICENAME'] in self.profile:
-            xml_ent_result="".join([xml_template_entitlement.format(Entitlement=ent) for ent in self.profile[upcc_SUBSCRIPTION_mapping['SERVICENAME']] ])
-        elif verbose>0:
-            self.debug("Subscriber without SERVICENAME")
-        
-        if upcc_PKGSUBSCRIPTION_mapping['PKGNAME'] in self.profile:
-#            self.profile[upcc_SUBSCRIPTION_mapping['SRVSTATUS_Frozen']] = ';'.join(self.profile[upcc_PKGSUBSCRIPTION_mapping['PKGNAME']])
-            if len(self.profile[upcc_PKGSUBSCRIPTION_mapping['PKGNAME']])>0:
-                tiers = ';'.join(self.profile[upcc_PKGSUBSCRIPTION_mapping['PKGNAME']])
-                xml_tier_result=xml_template_tier.format(Tier=tiers)
+        try:
+            # generate xml set for custom fields
+            xml_custom_result=""
+            xml_custom_result="".join([xml_template_custom.format(Custom_Name=attr,Custom_Value=self.profile[attr]) for attr in self.profile if 'Custom' in attr])
             
-        elif verbose>0:
-            self.debug("Subscriber without PKGNAME")        
+            # generate xml set for entitlements fields
+            xml_ent_result = xml_tier_result = ""
+            
+            if upcc_SUBSCRIPTION_mapping['SERVICENAME'] in self.profile:
+                xml_ent_result="".join([xml_template_entitlement.format(Entitlement=ent) for ent in self.profile[upcc_SUBSCRIPTION_mapping['SERVICENAME']] ])
+            elif verbose>0:
+                self.debug("Subscriber without SERVICENAME")
+            
+            if upcc_PKGSUBSCRIPTION_mapping['PKGNAME'] in self.profile:
+    #            self.profile[upcc_SUBSCRIPTION_mapping['SRVSTATUS_Frozen']] = ';'.join(self.profile[upcc_PKGSUBSCRIPTION_mapping['PKGNAME']])
+                if len(self.profile[upcc_PKGSUBSCRIPTION_mapping['PKGNAME']])>0:
+                    tiers = ';'.join(self.profile[upcc_PKGSUBSCRIPTION_mapping['PKGNAME']])
+                    xml_tier_result=xml_template_tier.format(Tier=tiers)
+                
+            elif verbose>0:
+                self.debug("Subscriber without PKGNAME")
+
+        except Exception as e:
+            if 'SID' in self.attrs:
+                sys.stderr.write("  error at SID = "+self.attrs['SID']+"\n")
+            raise(e)          
         
         try:
             xml_profile = template_profile.format(
@@ -823,29 +843,35 @@ class Pool(UPCC_Subscriber):
 
     ### Transfer values from Subscriber profile to Pool profile with Clone-* prefix
         
-        # store to Entitlement only items with Clone-* prefix
-        if upcc_SUBSCRIPTION_mapping['SERVICENAME'] in subs.profile:        
-            self.profile[upcc_SUBSCRIPTION_mapping['SERVICENAME']] = [ ent for ent in subs.profile[upcc_SUBSCRIPTION_mapping['SERVICENAME']] if master_quota_prefix in ent]
+        try:
+        
+            # store to Entitlement only items with Clone-* prefix
+            if upcc_SUBSCRIPTION_mapping['SERVICENAME'] in subs.profile:        
+                self.profile[upcc_SUBSCRIPTION_mapping['SERVICENAME']] = [ ent for ent in subs.profile[upcc_SUBSCRIPTION_mapping['SERVICENAME']] if master_quota_prefix in ent]
+                
+            # store to Tier only items with Clone-* prefix
+            if upcc_PKGSUBSCRIPTION_mapping['PKGNAME'] in subs.profile:        
+                self.profile[upcc_PKGSUBSCRIPTION_mapping['PKGNAME']] = [ ent for ent in subs.profile[upcc_PKGSUBSCRIPTION_mapping['PKGNAME']] if master_quota_prefix in ent]
+    
+            # quota from subs to pool
+            self.quota = [ quota for quota in subs.quota if quota['QUOTA'].startswith(quota_prefix+master_quota_prefix) ]
             
-        # store to Tier only items with Clone-* prefix
-        if upcc_PKGSUBSCRIPTION_mapping['PKGNAME'] in subs.profile:        
-            self.profile[upcc_PKGSUBSCRIPTION_mapping['PKGNAME']] = [ ent for ent in subs.profile[upcc_PKGSUBSCRIPTION_mapping['PKGNAME']] if master_quota_prefix in ent]
-
-        # quota from subs to pool
-        self.quota = [ quota for quota in subs.quota if quota['QUOTA'].startswith(quota_prefix+master_quota_prefix) ]
+            # dynquota from subs to pool
+            self.dyn_quota = [ dyn_quota for dyn_quota in subs.dyn_quota if dyn_quota['QUOTA'].startswith(quota_prefix+master_quota_prefix) and dyn_quota['TYPE'] == quota_type_topup]
+        ###
+            
+            # just to keep continuance
+            self.profile[upcc2profile_mappings['SID']] = subs.profile[upcc2profile_mappings['SID']]
+            
+            
+            self.profile['IMSI'] = subs.profile['IMSI']
+            
+            self.profile[upcc2profile_mappings['STATION']] = subs.get_master()
         
-        # dynquota from subs to pool
-        self.dyn_quota = [ dyn_quota for dyn_quota in subs.dyn_quota if dyn_quota['QUOTA'].startswith(quota_prefix+master_quota_prefix) and dyn_quota['TYPE'] == quota_type_topup]
-    ###
-        
-        # just to keep continuance
-        self.profile[upcc2profile_mappings['SID']] = subs.profile[upcc2profile_mappings['SID']]
-        
-        
-        self.profile['IMSI'] = subs.profile['IMSI']
-        
-        self.profile[upcc2profile_mappings['STATION']] = subs.get_master()
-        
+        except Exception as e:
+            if 'SID' in self.attrs:
+                sys.stderr.write("  error at SID = "+self.attrs['SID']+"\n")
+            raise(e)  
         
         # if master
 #        if subs.profile[upcc2profile_mappings['STATION']] in list(upcc_STATION_mapping.values()):
@@ -906,7 +932,9 @@ def processing(subscriber_rows,action):
             xml_result += subs.export_profile(xml_template['create_subs'])
             xml_result += subs.export_quota(subs.quota, xml_template['create_quota'], xml_template['quota_usage'])
 # moving into master and slave sections
-#            xml_result += subs.export_quota(subs.dyn_quota, xml_template['create_dquota'], xml_template['dyn_quota'])
+            
+            if subs.is_not_slave():
+                xml_result += subs.export_quota(subs.dyn_quota, xml_template['create_dquota'], xml_template['dyn_quota'])
 
             
             # top_up_quota = subs.export_quota(subs.topup_quota, xml_template['create_dquota'], xml_template['topup_quota'])
@@ -1493,8 +1521,9 @@ USAGE
         indent = len(program_name) * " "
         sys.stderr.write(program_name + ": " + repr(e) + "\n")
         
-        if 'SID' in subs.attrs:
-            sys.stderr.write(indent + "  error at SID = "+subs.attrs['SID']+"\n")
+        #TODO: issue here
+#        if 'SID' in subs.attrs:
+#            sys.stderr.write(indent + "  error at SID = "+subs.attrs['SID']+"\n")
         sys.stderr.write(indent + "  check log file at "+logFilePath+"\n")
         sys.stderr.write(indent + "  for help use --help"+"\n")
         sys.stderr.write(traceback.format_exc())
