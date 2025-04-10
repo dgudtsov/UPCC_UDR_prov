@@ -147,18 +147,11 @@ xml_template_quota_dyn="""
 <Type>{TYPE}</Type>
 <InitialTotalVolume>{VOLUME}</InitialTotalVolume>
 <purchasedatetime>{ADDTIME}</purchasedatetime>
+{InitialServiceSpecific}
 </DynamicQuota>
 """.replace("\n", "")
 
-xml_template_quota_dyn_slave="""
-<DynamicQuota name="{QUOTA}">
-<InstanceId>{INSTANCE}</InstanceId>
-<Type>{TYPE}</Type>
-<InitialTotalVolume>{VOLUME}</InitialTotalVolume>
-<purchasedatetime>{ADDTIME}</purchasedatetime>
-<InitialServiceSpecific>{SSPECIFIC}</InitialServiceSpecific>
-</DynamicQuota>
-""".replace("\n", "")
+xml_template_quota_dyn_InitialServiceSpecific="<InitialServiceSpecific>{SSPECIFIC}</InitialServiceSpecific>"
 
 xml_template_quota_topup="""
 <DynamicQuota name="{QUOTA}">
@@ -322,7 +315,6 @@ xml_template = {
     ,'update_dquota' : xml_template_update_dyn_quota
     ,'quota_usage' : xml_template_quota_usage
     ,'dyn_quota' : xml_template_quota_dyn
-    ,'dyn_quota_slave': xml_template_quota_dyn_slave
     ,'topup_quota' : xml_template_quota_topup
     ,'pass_quota' : xml_template_quota_pass
     ,'replace_subs': xml_template_replace_subs

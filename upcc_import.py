@@ -319,12 +319,12 @@ class UPCC_Subscriber(object):
         # default
         return False
     
-    def is_not_slave(self):
-        
-        if self.profile[upcc2profile_mappings['STATION']] == upcc_STATION_mapping['1']:
-            return True 
-        
-        return False
+    # def is_not_slave(self):
+    #
+    #     if self.profile[upcc2profile_mappings['STATION']] == upcc_STATION_mapping['1']:
+    #         return True 
+    #
+    #     return False
     
     def is_master(self):
         '''
@@ -721,7 +721,7 @@ class UPCC_Subscriber(object):
                                                   INSTANCE = q['QUOTA']+"_"+str(random.randrange(100000,999999)),
                                                   TYPE = q['TYPE'],
                                                   ADDTIME = q['ADDTIME'], # Mazur24052024
-                                                  SSPECIFIC = q['SSPECIFIC']
+                                                  InitialServiceSpecific = xml_template_quota_dyn_InitialServiceSpecific.format(SSPECIFIC=q['SSPECIFIC']) if q['SSPECIFIC'] is not None else ""
                                                   # InstanceId = <QNAME>_RAND(6) 
                                                   )
             
@@ -931,10 +931,13 @@ def processing(subscriber_rows,action):
         else:
             xml_result += subs.export_profile(xml_template['create_subs'])
             xml_result += subs.export_quota(subs.quota, xml_template['create_quota'], xml_template['quota_usage'])
+            
+            xml_result += subs.export_quota(subs.dyn_quota, xml_template['create_dquota'], xml_template['dyn_quota'])
+            
 # moving into master and slave sections
             
-            if subs.is_not_slave():
-                xml_result += subs.export_quota(subs.dyn_quota, xml_template['create_dquota'], xml_template['dyn_quota'])
+            # if subs.is_not_slave():
+            #     xml_result += subs.export_quota(subs.dyn_quota, xml_template['create_dquota'], xml_template['dyn_quota'])
 
             
             # top_up_quota = subs.export_quota(subs.topup_quota, xml_template['create_dquota'], xml_template['topup_quota'])
@@ -959,8 +962,8 @@ def processing(subscriber_rows,action):
             IMSI_Pool.add(subs.get_master())
             
             if action == 'create':
-                # from common to master- and slave- specific quota template 
-                xml_result += subs.export_quota(subs.dyn_quota, xml_template['create_dquota'], xml_template['dyn_quota'])
+                # # from common to master- and slave- specific quota template 
+                # xml_result += subs.export_quota(subs.dyn_quota, xml_template['create_dquota'], xml_template['dyn_quota'])
                 
                 xml_result_pool = xml_template_begin_transact
                 
@@ -985,9 +988,9 @@ def processing(subscriber_rows,action):
         # if subs is slave, add him into pool
         elif subs.has_master():
             
-            if action == 'create':
-                # from common to master- and slave- specific quota template 
-                xml_result += subs.export_quota(subs.dyn_quota, xml_template['create_dquota'], xml_template['dyn_quota_slave'])
+            # if action == 'create':
+            #     # from common to master- and slave- specific quota template 
+            #     xml_result += subs.export_quota(subs.dyn_quota, xml_template['create_dquota'], xml_template['dyn_quota_slave'])
             
             # pool = Pool()
             # pool.mapping(subs)
