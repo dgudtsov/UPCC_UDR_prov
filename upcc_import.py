@@ -1355,12 +1355,14 @@ USAGE
         logger.info("Errors stat: %s",json.dumps(errors_stat, indent=2, default=str))
         
         logger.info('Storing persistent SID_IMSI to: %s', stor_sid_imsi)
-        with gzip.open(stor_sid_imsi+'.pickle', 'wb') as f:
+        with gzip.open(stor_sid_imsi+'.tmp', 'wb') as f:
             pickle.dump(SID_IMSI, f)
+        os.replace(stor_sid_imsi+'.tmp', stor_sid_imsi+'.pickle')
         
         logger.info('Storing persistent IMSI Pools to: %s', stor_imsi_pool)
-        with gzip.open(stor_imsi_pool+'.pickle', 'wb') as f:
+        with gzip.open(stor_imsi_pool+'.tmp', 'wb') as f:
             pickle.dump(IMSI_Pool, f)
+        os.replace(stor_imsi_pool+'.tmp', stor_imsi_pool+'.pickle')
 
         logger.info('Done, exiting')
         
