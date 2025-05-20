@@ -103,7 +103,7 @@ fields_names={
 multi_fields = ('SUBSCRIBERGRPNAME','SUBSCRIPTION','PKGSUBSCRIPTION','QUOTA','ACCOUNT')
 
 # set of services to omit from export if EXPIREDATETIME or Auto-Provisioning is defined
-omit_expire_services= {'406792','406793','Default_Service_Redirect_T2','Default_Service_Jysan','Default_Service_FWA','Default_Service_T2','Default_Service','Default_Signalling_Service','ims_service_default_sig','ims_service_af_dedicate','ims_service_dedicate_audio','ims_service_dedicate_video','Default_Service_Abibas'}
+omit_expire_services= {'406792','406793','417502','417503','Default_Service_Redirect_T2','Default_Service_Jysan','Default_Service_FWA','Default_Service_T2','Default_Service','Default_Signalling_Service','ims_service_default_sig','ims_service_af_dedicate','ims_service_dedicate_audio','ims_service_dedicate_video','Default_Service_Abibas'}
 
 tag_begin = "<SUBBEGIN"
 tag_end = "<SUBEND"
