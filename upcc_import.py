@@ -51,9 +51,9 @@ from datetime import datetime #Mazur24052024
 import time #Mazur24052024
 
 __all__ = []
-__version__ = 1.1
+__version__ = 1.2
 __date__ = '2023-01-05'
-__updated__ = '2025-04-02'
+__updated__ = '2025-05-21'
 
 DEBUG = 0
 TESTRUN = 0
