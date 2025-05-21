@@ -663,7 +663,33 @@ class UPCC_Subscriber(object):
                                 
                                 # top-up = (BALANCE + CONSUMPTION – INITIAL)
                                 topup_quota['VOLUME'] = Q_BALANCE + Q_CONSUMPTION - Q_INITIAL
-                                
+                            
+                            
+                            # NEW model of calculation, 21/05/2025
+                            quota_volume2=Q_CONSUMPTION
+                            
+                            if Q_INITIAL == Q_CONSUMPTION:
+                                topup2=Q_BALANCE
+                            
+                            elif Q_INITIAL < Q_CONSUMPTION:
+                                topup2=Q_BALANCE + Q_CONSUMPTION - Q_INITIAL
+                            
+                            #Q_INITIAL > Q_CONSUMPTION
+                            else:
+                                topup2=Q_BALANCE - Q_INITIAL + Q_CONSUMPTION
+                            
+                            # compare new values with old ones
+                            if quota_volume!=quota_volume2:
+                                com='>' if quota_volume>quota_volume2 else '<'
+                                self.warn(f"quota_volume disbalance for quota {instance['QUOTANAME']}: old {quota_volume} {com} new {quota_volume2}")
+                                #rewrite old value with new one if they were differ
+                                quota_volume=quota_volume2
+                            
+                            if topup_quota['VOLUME']!=topup2:
+                                com='>' if topup_quota['VOLUME']>topup2 else '<'
+                                self.warn(f"quota_volume disbalance for TOP-UP {instance['QUOTANAME']}: old {topup_quota['VOLUME']} {com} new {topup2}")
+                                #rewrite old value with new one if they were differ
+                                topup_quota['VOLUME']=topup2
                             
                             # add prefix to quota name
                             quota['QUOTA'] = quota_prefix+instance['QUOTANAME']
