@@ -372,18 +372,25 @@ class UPCC_Subscriber(object):
         
         return
     
-    def warn(self,msg):
+    def warn(self,msg,details=None):
         self.logger.warning('%s: SID = %s', msg, self.profile[upcc2profile_mappings['SID']])
+        if details is not None:
+            self.logger.warning(details)
         self.__error_peg__(msg)
         
         return
     
-    def debug(self,msg):
+    def debug(self,msg,details=None):
         '''
         Universal debug logging
         '''
         self.logger.debug('%s: SID = %s', msg, self.profile[upcc2profile_mappings['SID']])
-        self.logger.debug('Profile: %s', json.dumps(self.profile, indent=None, default=str))
+
+        if details is not None:
+            self.logger.debug(details)
+        
+        if verbose>0:
+            self.logger.debug('Profile: %s', json.dumps(self.profile, indent=None, default=str))
         
         self.__error_peg__(msg)
         
@@ -576,6 +583,8 @@ class UPCC_Subscriber(object):
                                                   
                     for instance in self.attrs['QUOTA']:
                         
+                        flag_subs_quota_disbalance=False
+                        
                         if len(instance['QUOTANAME'])<2:
                             self.warn('Quota name is empty, skipping')
                             continue
@@ -667,6 +676,7 @@ class UPCC_Subscriber(object):
                             
                             # NEW model of calculation, 21/05/2025
                             quota_volume2=Q_CONSUMPTION
+                            topup2=None
                             
                             if Q_INITIAL == Q_CONSUMPTION:
                                 topup2=Q_BALANCE
@@ -678,18 +688,32 @@ class UPCC_Subscriber(object):
                             else:
                                 topup2=Q_BALANCE - Q_INITIAL + Q_CONSUMPTION
                             
+                            flag_main_quota_disbalance=False
+                            
                             # compare new values with old ones
                             if quota_volume!=quota_volume2:
                                 com='>' if quota_volume>quota_volume2 else '<'
-                                self.warn(f"quota_volume disbalance for quota {instance['QUOTANAME']}: old {quota_volume} {com} new {quota_volume2}")
+                                self.debug("quota_volume disbalance for quota",f"quota_volume disbalance for quota {instance['QUOTANAME']}: old {quota_volume} {com} new {quota_volume2}, I/C/B: {Q_INITIAL}/{Q_CONSUMPTION}/{Q_BALANCE}")
                                 #rewrite old value with new one if they were differ
                                 quota_volume=quota_volume2
+                                flag_main_quota_disbalance=True
+                                flag_subs_quota_disbalance=True
                             
-                            if topup_quota['VOLUME']!=topup2:
-                                com='>' if topup_quota['VOLUME']>topup2 else '<'
-                                self.warn(f"quota_volume disbalance for TOP-UP {instance['QUOTANAME']}: old {topup_quota['VOLUME']} {com} new {topup2}")
-                                #rewrite old value with new one if they were differ
-                                topup_quota['VOLUME']=topup2
+                            if len(topup_quota)>0:
+                                if topup_quota['VOLUME']!=topup2:
+                                    flag_subs_quota_disbalance=True
+                                    com='>' if topup_quota['VOLUME']>topup2 else '<'
+                                    self.debug("quota_volume disbalance for TOP-UP",f"quota_volume disbalance for TOP-UP {instance['QUOTANAME']}: old {topup_quota['VOLUME']} {com} new {topup2}, I/C/B: {Q_INITIAL}/{Q_CONSUMPTION}/{Q_BALANCE}")
+                                    #rewrite old value with new one if they were differ
+                                    topup_quota['VOLUME']=topup2
+                                    if not flag_main_quota_disbalance:
+                                        self.logger.debug(f"quota_volume for quota {instance['QUOTANAME']}: {quota_volume}, I/C/B: {Q_INITIAL}/{Q_CONSUMPTION}/{Q_BALANCE}")
+                            else:
+                                if topup2 is not None and topup2>0:
+                                    flag_subs_quota_disbalance=True
+                                    self.debug("quota_volume disbalance for TOP-UP",f"quota_volume disbalance for TOP-UP {instance['QUOTANAME']}: old none, new {topup2}, I/C/B: {Q_INITIAL}/{Q_CONSUMPTION}/{Q_BALANCE}")
+                                    if not flag_main_quota_disbalance:
+                                        self.logger.debug(f"quota_volume for quota {instance['QUOTANAME']}: {quota_volume}, I/C/B: {Q_INITIAL}/{Q_CONSUMPTION}/{Q_BALANCE}")
                             
                             # add prefix to quota name
                             quota['QUOTA'] = quota_prefix+instance['QUOTANAME']
@@ -721,7 +745,9 @@ class UPCC_Subscriber(object):
                             pass_quota['ADDTIME'] = Q_LASTRESETDATETIME_OBJ_STR # Mazur24052024
                             pass_quota['SSPECIFIC'] = 1 # Mazur24052024 (02042025)
                             self.dyn_quota.append(pass_quota)
-            
+                        
+                        if flag_subs_quota_disbalance:
+                            self.debug("subscriber quota disbalance")
         except Exception as e:
             if 'SID' in self.attrs:
                 sys.stderr.write("  error at SID = "+self.attrs['SID']+"\n")
