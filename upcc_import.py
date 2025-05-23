@@ -389,7 +389,7 @@ class UPCC_Subscriber(object):
         if details is not None:
             self.logger.debug(details)
         
-        if verbose>0:
+        if verbose>1:
             self.logger.debug('Profile: %s', json.dumps(self.profile, indent=None, default=str))
         
         self.__error_peg__(msg)
@@ -435,7 +435,7 @@ class UPCC_Subscriber(object):
                 if self.profile[upcc2profile_mappings['STATION']] == upcc_STATION_mapping['2']:
                     if self.profile[upcc2profile_mappings['SID']] in SID_IMSI:
                         self.profile[upcc2profile_mappings['STATION']] = SID_IMSI[self.profile[upcc2profile_mappings['SID']]]
-                        if verbose>0:
+                        if verbose>1:
                             self.debug("Slave = Master")
                     else:
                         self.debug('Slave has no Master')
@@ -693,7 +693,8 @@ class UPCC_Subscriber(object):
                             # compare new values with old ones
                             if quota_volume!=quota_volume2:
                                 com='>' if quota_volume>quota_volume2 else '<'
-                                self.debug("quota_volume disbalance for quota",f"quota_volume disbalance for quota {instance['QUOTANAME']}: old {quota_volume} {com} new {quota_volume2}, I/C/B: {Q_INITIAL}/{Q_CONSUMPTION}/{Q_BALANCE}")
+                                if verbose>0:
+                                    self.debug("quota_volume disbalance for quota",f"quota_volume disbalance for quota {instance['QUOTANAME']}: old {quota_volume} {com} new {quota_volume2}, I/C/B: {Q_INITIAL}/{Q_CONSUMPTION}/{Q_BALANCE}")
                                 #rewrite old value with new one if they were differ
                                 quota_volume=quota_volume2
                                 flag_main_quota_disbalance=True
@@ -703,17 +704,21 @@ class UPCC_Subscriber(object):
                                 if topup_quota['VOLUME']!=topup2:
                                     flag_subs_quota_disbalance=True
                                     com='>' if topup_quota['VOLUME']>topup2 else '<'
-                                    self.debug("quota_volume disbalance for TOP-UP",f"quota_volume disbalance for TOP-UP {instance['QUOTANAME']}: old {topup_quota['VOLUME']} {com} new {topup2}, I/C/B: {Q_INITIAL}/{Q_CONSUMPTION}/{Q_BALANCE}")
+                                    if verbose>0:
+                                        self.debug("quota_volume disbalance for TOP-UP",f"quota_volume disbalance for TOP-UP {instance['QUOTANAME']}: old {topup_quota['VOLUME']} {com} new {topup2}, I/C/B: {Q_INITIAL}/{Q_CONSUMPTION}/{Q_BALANCE}")
                                     #rewrite old value with new one if they were differ
                                     topup_quota['VOLUME']=topup2
                                     if not flag_main_quota_disbalance:
-                                        self.logger.debug(f"quota_volume for quota {instance['QUOTANAME']}: {quota_volume}, I/C/B: {Q_INITIAL}/{Q_CONSUMPTION}/{Q_BALANCE}")
+                                        if verbose>0:
+                                            self.logger.debug(f"quota_volume for quota {instance['QUOTANAME']}: {quota_volume}, I/C/B: {Q_INITIAL}/{Q_CONSUMPTION}/{Q_BALANCE}")
                             else:
                                 if topup2 is not None and topup2>0:
                                     flag_subs_quota_disbalance=True
-                                    self.debug("quota_volume disbalance for TOP-UP",f"quota_volume disbalance for TOP-UP {instance['QUOTANAME']}: old none, new {topup2}, I/C/B: {Q_INITIAL}/{Q_CONSUMPTION}/{Q_BALANCE}")
+                                    if verbose>0:
+                                        self.debug("quota_volume disbalance for TOP-UP",f"quota_volume disbalance for TOP-UP {instance['QUOTANAME']}: old none, new {topup2}, I/C/B: {Q_INITIAL}/{Q_CONSUMPTION}/{Q_BALANCE}")
                                     if not flag_main_quota_disbalance:
-                                        self.logger.debug(f"quota_volume for quota {instance['QUOTANAME']}: {quota_volume}, I/C/B: {Q_INITIAL}/{Q_CONSUMPTION}/{Q_BALANCE}")
+                                        if verbose>0:
+                                            self.logger.debug(f"quota_volume for quota {instance['QUOTANAME']}: {quota_volume}, I/C/B: {Q_INITIAL}/{Q_CONSUMPTION}/{Q_BALANCE}")
                             
                             # add prefix to quota name
                             quota['QUOTA'] = quota_prefix+instance['QUOTANAME']
@@ -747,7 +752,8 @@ class UPCC_Subscriber(object):
                             self.dyn_quota.append(pass_quota)
                         
                         if flag_subs_quota_disbalance:
-                            self.debug("subscriber quota disbalance")
+                            if verbose>0:
+                                self.debug("subscriber quota disbalance")
         except Exception as e:
             if 'SID' in self.attrs:
                 sys.stderr.write("  error at SID = "+self.attrs['SID']+"\n")
@@ -809,7 +815,7 @@ class UPCC_Subscriber(object):
             
             if upcc_SUBSCRIPTION_mapping['SERVICENAME'] in self.profile:
                 xml_ent_result="".join([xml_template_entitlement.format(Entitlement=ent) for ent in self.profile[upcc_SUBSCRIPTION_mapping['SERVICENAME']] ])
-            elif verbose>0:
+            elif verbose>1:
                 self.debug("Subscriber without SERVICENAME")
             
             if upcc_PKGSUBSCRIPTION_mapping['PKGNAME'] in self.profile:
@@ -818,7 +824,7 @@ class UPCC_Subscriber(object):
                     tiers = ';'.join(self.profile[upcc_PKGSUBSCRIPTION_mapping['PKGNAME']])
                     xml_tier_result=xml_template_tier.format(Tier=tiers)
                 
-            elif verbose>0:
+            elif verbose>1:
                 self.debug("Subscriber without PKGNAME")
 
         except Exception as e:
@@ -953,7 +959,7 @@ def processing(subscriber_rows,action):
 
     # Extract
     subs = UPCC_Subscriber (subscriber_rows)
-    if verbose>0:
+    if verbose>1:
         subs.debug("Subscriber profile dump ")
     
     # Transform
@@ -1089,7 +1095,7 @@ def processing(subscriber_rows,action):
         xml_result += xml_template_end_transact
         
         #xml_result =subs.export(xml_template['create_subs'])
-        if verbose>0: 
+        if verbose>1: 
             logger.debug (xml_result)
             logger.debug (xml_result_pool)
     
