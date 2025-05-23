@@ -51,9 +51,9 @@ from datetime import datetime #Mazur24052024
 import time #Mazur24052024
 
 __all__ = []
-__version__ = 1.2
+__version__ = 1.3
 __date__ = '2023-01-05'
-__updated__ = '2025-05-21'
+__updated__ = '2025-05-23'
 
 DEBUG = 0
 TESTRUN = 0
@@ -648,77 +648,84 @@ class UPCC_Subscriber(object):
                         
                         # is not virtual quota 
                         if instance['QUOTAFLAG']=="0":
-                        
+                            topup1=None
+                            
                             # BALANCE + CONSUPTION <= INITIAL
                             if Q_BALANCE + Q_CONSUMPTION <= Q_INITIAL:
-                                quota_volume = Q_INITIAL - Q_BALANCE
+                                quota_volume1 = Q_INITIAL - Q_BALANCE
                             
                             # BALANCE + CONSUPTION > INITIAL
                             # CONSUMPTION >= INITIAL
                             elif Q_CONSUMPTION >= Q_INITIAL:
                             
-                                quota_volume = Q_CONSUMPTION
+                                quota_volume1 = Q_CONSUMPTION
                                 
                                 if Q_BALANCE>0:
                                    
                                    # top-up = BALANCE
                                    #topup_quota['USAGE'] = Q_INITIAL - Q_BALANCE 
-                                   topup_quota['VOLUME'] = Q_BALANCE
+##                                   topup_quota['VOLUME'] = Q_BALANCE
+                                   topup1 = Q_BALANCE
                                 
                             #elif Q_CONSUMPTION < Q_INITIAL:
                             # CONSUMPTION < INITIAL
                             else:
-                                quota_volume = Q_CONSUMPTION
+                                quota_volume1 = Q_CONSUMPTION
                                 
                                 # top-up = (BALANCE + CONSUMPTION – INITIAL)
-                                topup_quota['VOLUME'] = Q_BALANCE + Q_CONSUMPTION - Q_INITIAL
+##                                topup_quota['VOLUME'] = Q_BALANCE + Q_CONSUMPTION - Q_INITIAL
+                                topup1 = Q_BALANCE + Q_CONSUMPTION - Q_INITIAL
                             
                             
-                            # NEW model of calculation, 21/05/2025
-                            quota_volume2=Q_CONSUMPTION
+                            # NEW model of calculation, 23/05/2025
                             topup2=None
                             
-                            if Q_INITIAL == Q_CONSUMPTION:
-                                topup2=Q_BALANCE
-                            
-                            elif Q_INITIAL < Q_CONSUMPTION:
-                                topup2=Q_BALANCE + Q_CONSUMPTION - Q_INITIAL
-                            
-                            #Q_INITIAL > Q_CONSUMPTION
+                            if Q_BALANCE ==0:
+                                quota_volume2=Q_INITIAL
+                            elif Q_BALANCE<=Q_INITIAL:
+                                quota_volume2=Q_INITIAL-Q_BALANCE
+                            #Q_BALANCE > Q_INITIAL
                             else:
-                                topup2=Q_BALANCE - Q_INITIAL + Q_CONSUMPTION
+                                quota_volume2=0
+                                topup2=Q_BALANCE - Q_INITIAL
+                                # topup2>0
+                                topup_quota['VOLUME']=topup2
+                            
+                            # new quota volume
+                            quota_volume=quota_volume2
                             
                             flag_main_quota_disbalance=False
                             
                             # compare new values with old ones
-                            if quota_volume!=quota_volume2:
-                                com='>' if quota_volume>quota_volume2 else '<'
+                            if quota_volume1!=quota_volume2:
+                                com='>' if quota_volume1>quota_volume2 else '<'
                                 if verbose>0:
-                                    self.debug("quota_volume disbalance for quota",f"quota_volume disbalance for quota {instance['QUOTANAME']}: old {quota_volume} {com} new {quota_volume2}, I/C/B: {Q_INITIAL}/{Q_CONSUMPTION}/{Q_BALANCE}")
+                                    self.debug("quota_volume disbalance for quota",f"quota_volume disbalance for quota {instance['QUOTANAME']}: old {quota_volume1} {com} new {quota_volume2}, I/C/B: {Q_INITIAL}/{Q_CONSUMPTION}/{Q_BALANCE}")
                                 #rewrite old value with new one if they were differ
-                                quota_volume=quota_volume2
                                 flag_main_quota_disbalance=True
                                 flag_subs_quota_disbalance=True
                             
-                            if len(topup_quota)>0:
-                                if topup_quota['VOLUME']!=topup2:
+                            if topup1 is not None and topup2 is not None:
+                                if topup1!=topup2:
                                     flag_subs_quota_disbalance=True
-                                    com='>' if topup_quota['VOLUME']>topup2 else '<'
+                                    com='>' if topup1>topup2 else '<'
                                     if verbose>0:
-                                        self.debug("quota_volume disbalance for TOP-UP",f"quota_volume disbalance for TOP-UP {instance['QUOTANAME']}: old {topup_quota['VOLUME']} {com} new {topup2}, I/C/B: {Q_INITIAL}/{Q_CONSUMPTION}/{Q_BALANCE}")
+                                        self.debug("quota_volume disbalance for TOP-UP",f"quota_volume disbalance for TOP-UP {instance['QUOTANAME']}: old {topup1} {com} new {topup2}, I/C/B: {Q_INITIAL}/{Q_CONSUMPTION}/{Q_BALANCE}")
                                     #rewrite old value with new one if they were differ
-                                    topup_quota['VOLUME']=topup2
+                                    
                                     if not flag_main_quota_disbalance:
                                         if verbose>0:
-                                            self.logger.debug(f"quota_volume for quota {instance['QUOTANAME']}: {quota_volume}, I/C/B: {Q_INITIAL}/{Q_CONSUMPTION}/{Q_BALANCE}")
+                                            self.logger.debug(f"quota_volume for quota {instance['QUOTANAME']}: {quota_volume1}, I/C/B: {Q_INITIAL}/{Q_CONSUMPTION}/{Q_BALANCE}")
+                            elif topup1 is None and topup2 is None:
+                                # both is None, nothing to do
+                                pass
                             else:
-                                if topup2 is not None and topup2>0:
-                                    flag_subs_quota_disbalance=True
+                                flag_subs_quota_disbalance=True
+                                if verbose>0:
+                                    self.debug("quota_volume disbalance for TOP-UP",f"quota_volume disbalance for TOP-UP {instance['QUOTANAME']}: old {topup1}, new {topup2}, I/C/B: {Q_INITIAL}/{Q_CONSUMPTION}/{Q_BALANCE}")
+                                if not flag_main_quota_disbalance:
                                     if verbose>0:
-                                        self.debug("quota_volume disbalance for TOP-UP",f"quota_volume disbalance for TOP-UP {instance['QUOTANAME']}: old none, new {topup2}, I/C/B: {Q_INITIAL}/{Q_CONSUMPTION}/{Q_BALANCE}")
-                                    if not flag_main_quota_disbalance:
-                                        if verbose>0:
-                                            self.logger.debug(f"quota_volume for quota {instance['QUOTANAME']}: {quota_volume}, I/C/B: {Q_INITIAL}/{Q_CONSUMPTION}/{Q_BALANCE}")
+                                        self.logger.debug(f"quota_volume for quota {instance['QUOTANAME']}: {quota_volume1}, I/C/B: {Q_INITIAL}/{Q_CONSUMPTION}/{Q_BALANCE}")                                
                             
                             # add prefix to quota name
                             quota['QUOTA'] = quota_prefix+instance['QUOTANAME']
