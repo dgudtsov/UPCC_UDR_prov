@@ -384,13 +384,25 @@ class UPCC_Subscriber(object):
         '''
         Universal debug logging
         '''
-        self.logger.debug('%s: SID = %s', msg, self.profile[upcc2profile_mappings['SID']])
+        try:
+            self.logger.debug('%s: SID = %s', msg, self.profile[upcc2profile_mappings['SID']])
+        except Exception as e:
+            pass
 
         if details is not None:
             self.logger.debug(details)
         
         if verbose>1:
             self.logger.debug('Profile: %s', json.dumps(self.profile, indent=None, default=str))
+            
+            try:
+                if len(self.attrs['QUOTA'])>0:
+                    self.logger.debug('Quota source: %s', json.dumps(self.attrs['QUOTA'], indent=None, default=str))
+            except Exception as e:
+                pass            
+            
+            if len(self.quota)>0:
+                self.logger.debug('Quota result: %s', json.dumps(self.quota, indent=None, default=str))
         
         self.__error_peg__(msg)
         
@@ -963,6 +975,8 @@ def processing(subscriber_rows,action):
     global use_cache
     
     global verbose
+    
+    logger = logging.getLogger(__name__)
 
     # Extract
     subs = UPCC_Subscriber (subscriber_rows)
@@ -1261,7 +1275,7 @@ USAGE
                 logger.info('persistent file is not found, new will be created')        
         
         if verbose > 0:
-            logger.info("Verbose mode on")
+            logger.info("Verbose mode on, level=%i", verbose)
             # if recurse:
             #     logger.info("Recursive mode on")
             # else:
