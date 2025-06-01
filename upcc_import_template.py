@@ -134,6 +134,7 @@ xml_template_update_dyn_quota="""
 # static (regular) quota usage definition
 xml_template_quota_usage="""
 <quota name="{QUOTA}">
+<time>1</time>
 <totalVolume>{VOLUME}</totalVolume>
 <Type>{TYPE}</Type>
 <serviceSpecific>{ADDTIME}</serviceSpecific>
